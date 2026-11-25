@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>کو مونستر | پنل فروش VPN</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <div id="loginView" class="login-view">
+    <div class="login-card">
+      <canvas id="loginScene" aria-hidden="true"></canvas>
+      <div class="login-overlay">
+        <div class="logo">◈ COO <b>MONSTER</b></div>
+        <h1>پنل ادمین</h1>
+        <p>مدیریت چند سرور x-ui، مشتریان، سرویسها و کیف پول</p>
+        <form id="loginForm">
+          <label>رمز پنل
+            <input id="adminPassword" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          </label>
+          <div id="loginError" class="err" hidden></div>
+          <button class="btn primary" type="submit">ورود به پنل</button>
+        </form>
+        <div class="hint">رمز تنظیمشده در secrets.env را وارد کن.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="appView" class="app-view" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="mark">◈</span> COO <b>MONSTER</b> <span class="sub">/ PANEL</span></div>
+      <div class="top-actions">
+        <button id="commandBtn" class="btn ghost small" title="Ctrl+K">⌘ فرمانها</button>
+        <button id="notificationBtn" class="btn ghost small">🔔 اعلانها <span id="unreadDot" class="notif-dot off"></span></button>
+        <span id="serverBadge" class="badge">سرورها: ...</span>
+        <span id="xuiBadge" class="badge">x-ui: ...</span>
+        <span id="botBadge" class="badge">ربات: ...</span>
+        <button id="logoutBtn" class="btn ghost small">خروج</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <button class="nav active" data-tab="overview">📊 خلاصه</button>
+        <button class="nav" data-tab="insights">📈 تحلیل</button>
+        <button class="nav" data-tab="orders">🛒 سفارشات <span id="pendingDot" class="dot"></span></button>
+        <button class="nav" data-tab="plans">📦 پلنها</button>
+        <button class="nav" data-tab="customers">🧑‍💼 مشتریان</button>
+        <button class="nav" data-tab="support">🎧 پشتیبانی <span id="ticketDot" class="dot off"></span></button>
+        <button class="nav" data-tab="configs">🔗 سرویسها</button>
+        <button class="nav" data-tab="servers">🖥 سرورها</button>
+        <button class="nav" data-tab="wallet">👛 کیف پول</button>
+        <button class="nav" data-tab="extra">💳 شارژ اضافه <span id="extraDot" class="dot off"></span></button>
+        <button class="nav" data-tab="users">👤 کاربران</button>
+        <button class="nav" data-tab="promos">🎟 کدها</button>
+        <button class="nav" data-tab="broadcast">📣 ارسال همگانی</button>
+        <button class="nav" data-tab="settings">⚙️ تنظیمات</button>
+        <button class="nav" data-tab="audit">📜 لاگ</button>
+        <button class="nav" data-tab="backup">💾 پشتیبان</button>
+      </aside>
+
+      <main class="content">
+        <section id="tab-overview" class="tab active">
+          <div class="hero-panel">
+            <canvas id="dashScene" aria-hidden="true"></canvas>
+            <div class="hero-text">
+              <span class="kicker">REAL-TIME CONTROL</span>
+              <h2>همه چیز تحت کنترل شماست</h2>
+              <p>سرورها و اینابندها را زنده ببین، سفارش تایید کن، مشتریان را مدیریت کن و کیف پول را کنترل کن.</p>
+            </div>
+          </div>
+          <div id="statCards" class="stats"></div>
+          <div id="quickActions" class="quick-actions"></div>
+          <div class="panel">
+            <div class="panel-head"><h3>آخرین سفارشات</h3><button class="btn small" data-go="orders">همه</button></div>
+            <div id="recentOrders" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-insights" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>روند ۱۴ روزه فروش و سفارشات</h3><button id="refreshInsights" class="btn small">🔄 تازهسازی</button></div>
+            <div id="revenueChart" class="chart"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h3>شاخصهای سلامت سیستم</h3></div>
+            <div id="insightCards" class="stats"></div>
+          </div>
+        </section>
+
+        <section id="tab-orders" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>سفارشات</h3><button id="refreshOrders" class="btn small">🔄 تازهسازی</button></div>
+            <div id="ordersTable" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-plans" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>پلنها و مقصد سرویس</h3><button id="refreshPlans" class="btn small">🔄 تازهسازی</button></div>
+            <form id="planForm" class="form-row">
+              <input name="name" placeholder="نام پلن" required>
+              <input name="days" type="number" min="1" value="30" placeholder="روز" required>
+              <input name="total_gb" type="number" min="0" step="1" value="20" placeholder="GB" required>
+              <input name="price" type="number" min="0" value="100000" placeholder="قیمت (تومان)" required>
+              <input name="sort" type="number" value="0" placeholder="ترتیب">
+            </form>
+            <div class="target-builder">
+              <div class="picker-grid">
+                <div class="picker-block">
+                  <div class="picker-label">🖥 سرور مقصد</div>
+                  <button id="targetServerBtn" type="button" class="picker-trigger">
+                    <span id="targetServerLabel">در حال بارگذاری سرورها...</span><span class="caret">▾</span>
+                  </button>
+                  <div id="serverMenu" class="picker-menu" hidden></div>
+                </div>
+                <div class="picker-block">
+                  <div class="picker-label">🔗 اینابندها <small>چندتا میشود</small></div>
+                  <div id="targetInbounds" class="inbound-picker"></div>
+                </div>
+                <div class="picker-add">
+                  <button id="addTarget" type="button" class="btn ok small">➕ مقصد اضافه</button>
+                  <small id="selectionHint">0 اینابند انتخاب شد</small>
+                </div>
+              </div>
+              <div id="targetChips" class="chips"></div>
+              <button id="savePlanBtn" class="btn primary" type="button">💾 ذخیره پلن</button>
+              <button id="clearPlanBtn" class="btn ghost small" type="button">پاک کردن</button>
+            </div>
+            <div id="plansTable" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-customers" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>همه مشتریان</h3><button id="refreshCustomers" class="btn small">🔄 تازهسازی</button></div>
+            <div id="customersTable" class="table-wrap"></div>
+          </div>
+          <div id="customerDetail" class="panel" hidden></div>
+        </section>
+
+        <section id="tab-support" class="tab">
+          <div class="support-shell">
+            <div class="panel support-visual">
+              <canvas id="supportScene" aria-hidden="true"></canvas>
+              <div class="support-visual-text">
+                <span class="kicker">SUPPORT PORTAL</span>
+                <h3>همیشه در دسترس</h3>
+                <p>تیکتهای مشتریان را زنده ببین و با یک کلیک جواب بده.</p>
+              </div>
+            </div>
+            <div class="panel support-desk">
+              <div class="panel-head">
+                <h3>تیکتهای پشتیبانی <span id="supportOpen" class="pill warn">0 باز</span></h3>
+                <div class="actions">
+                  <select id="ticketFilter" class="mini-select">
+                    <option value="">همه</option>
+                    <option value="open">باز</option>
+                    <option value="closed">بسته</option>
+                  </select>
+                  <button id="refreshSupport" class="btn small">🔄 تازهسازی</button>
+                </div>
+              </div>
+              <div id="ticketsTable" class="table-wrap"></div>
+              <div id="ticketThread" class="ticket-thread" hidden>
+                <div class="panel-head">
+                  <h3 id="ticketTitle">تیکت</h3>
+                  <div class="actions">
+                    <button id="closeTicket" class="btn ok small">✅ بستن</button>
+                    <button id="deleteTicket" class="btn danger small">🗑 حذف</button>
+                    <button id="closeThread" class="btn small">بستن پنجره</button>
+                  </div>
+                </div>
+                <div id="ticketMessages" class="ticket-messages"></div>
+                <form id="replyForm" class="reply-form">
+                  <input id="replyTicketId" type="hidden">
+                  <textarea id="replyText" rows="3" placeholder="پاسخ خود را بنویسید..." required></textarea>
+                  <button class="btn primary" type="submit">📤 ارسال پاسخ</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-configs" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>سرویسهای ساختهشده</h3><button id="refreshConfigs" class="btn small">🔄 تازهسازی</button></div>
+            <div id="configsTable" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-servers" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>سرورها و اینابندهای زنده x-ui</h3><div class="actions">
+              <button id="addServerBtn" class="btn primary small">➕ اضافه سرور</button>
+              <button id="syncServers" class="btn ok small">🔄 همگامسازی</button>
+              <button id="refreshServers" class="btn small">تازهسازی</button>
+            </div></div>
+            <p class="hint">برای اضافه کردن یا ویرایش سرور، از دکمههای بالای کاردها استفاده کن؛ یک پنل سهبعدی باز میشود.</p>
+            <div id="serversTable" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-wallet" class="tab">
+          <div id="walletSummary" class="stats"></div>
+          <div class="panel">
+            <div class="panel-head"><h3>شارژ / کسر موجودی</h3><button id="refreshWallet" class="btn small">🔄 تازهسازی</button></div>
+            <form id="walletForm" class="form-row">
+              <input name="telegram_id" type="number" min="1" placeholder="Telegram ID" required>
+              <select name="action">
+                <option value="charge">➕ شارژ</option>
+                <option value="deduct">➖ کسر</option>
+              </select>
+              <input name="amount" type="number" min="1" placeholder="مبلغ (تومان)" required>
+              <input name="note" placeholder="یادداشت">
+              <button class="btn primary" type="submit">اعمال</button>
+            </form>
+            <div id="walletUsers" class="table-wrap"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h3>تراکنشها</h3></div>
+            <div id="walletTx" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-extra" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>💳 شارژ اضافه — درخواستهای پرداختشده</h3><button id="refreshExtra" class="btn small">🔄 تازهسازی</button></div>
+            <p class="hint">درخواستهای شارژ کیف پول، شارژ روز و شارژ حجم سرویس بعد از پرداخت مشتری در اینجا بررسی میشوند. میتوانی کد پرداخت را قبل از تایید وارد کنی.</p>
+            <div id="extraCharges" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-users" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>کاربران</h3><button id="refreshUsers" class="btn small">🔄 تازهسازی</button></div>
+            <div id="usersTable" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-promos" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>کدهای تخفیف</h3></div>
+            <form id="promoForm" class="form-row">
+              <input name="code" placeholder="کد" required>
+              <input name="percent" type="number" min="0" max="100" value="10" placeholder="درصد">
+              <input name="amount" type="number" min="0" value="0" placeholder="مبلغ">
+              <input name="max_uses" type="number" min="0" value="0" placeholder="تعداد">
+              <button class="btn primary" type="submit">➕ اضافه</button>
+            </form>
+            <div id="promosTable" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-broadcast" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>ارسال همگانی</h3></div>
+            <form id="broadcastForm" class="stack-form">
+              <textarea name="text" rows="5" placeholder="متن پیامی که به همه کاربران ارسال میشود..." required></textarea>
+              <button class="btn primary" type="submit">📣 ارسال</button>
+            </form>
+            <div id="broadcastResult" class="result"></div>
+          </div>
+        </section>
+
+        <section id="tab-settings" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>تنظیمات ربات</h3></div>
+            <form id="settingsForm" class="stack-form">
+              <label>پیام خوشآمدگویی<textarea name="welcome" rows="4"></textarea></label>
+              <label>کانال<textarea name="channel" rows="2"></textarea></label>
+              <label>پشتیبانی<textarea name="support" rows="2"></textarea></label>
+              <label>پیام آغاز پشتیبانی<textarea name="support_greeting" rows="2"></textarea></label>
+              <div class="form-row">
+                <label>اعلان اینابند جدید
+                  <select name="notify_inbound">
+                    <option value="1">روشن</option><option value="0">خاموش</option>
+                  </select>
+                </label>
+                <label>اعلان تایید سفارش
+                  <select name="auto_notify_order">
+                    <option value="1">روشن</option><option value="0">خاموش</option>
+                  </select>
+                </label>
+              </div>
+              <button class="btn primary" type="submit">💾 ذخیره</button>
+            </form>
+            <div id="settingsResult" class="result"></div>
+          </div>
+        </section>
+
+        <section id="tab-audit" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>لاگ فعالیتها</h3></div>
+            <div id="auditTable" class="table-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-backup" class="tab">
+          <div class="panel">
+            <div class="panel-head"><h3>پشتیبان و ابزارها</h3><div class="actions">
+              <button id="exportBtn" class="btn primary small">⬇️ دانلود بکاپ JSON</button>
+              <button id="testNotifyBtn" class="btn ok small">🔔 اعلان تست</button>
+            </div></div>
+            <p class="hint">بکاپ شامل کاربران، پلنها، سفارشات، سرویسها، تراکنشها، تیکتها و تنظیمات است. توکنهای x-ui و ربات در آن گنجانده نمیشوند.</p>
+            <pre id="backupPreview" class="backup-preview">برای دیدن خلاصه بکاپ، دکمه دانلود را بزن.</pre>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="notificationPanel" class="drawer" hidden>
+    <div class="panel-head"><h3>اعلانها</h3><button id="closeNotifications" class="btn small">بستن</button></div>
+    <div id="notificationList" class="notification-list"></div>
+    <button id="readAllNotifications" class="btn ok small">✓ خواندن همه</button>
+  </div>
+
+  <div id="commandPalette" class="palette" hidden>
+    <input id="commandInput" placeholder="جستجوی بخش یا فرمان... (Ctrl+K)" autocomplete="off">
+    <div id="commandResults" class="command-results"></div>
+  </div>
+
+  <div id="serverModal" class="modal-shell" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div id="serverModalCard" class="modal-card">
+      <div class="modal-orb orb-a"></div><div class="modal-orb orb-b"></div>
+      <div class="modal-head">
+        <div>
+          <div class="kicker">X-UI CONTROL DECK</div>
+          <h3 id="serverModalTitle">ویرایش سرور</h3>
+          <p id="serverModalSub" class="modal-sub">تنظیمات پنل x-ui</p>
+        </div>
+        <button id="closeServerModal" class="btn small" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-preview">
+          <div class="preview-top">
+            <span id="previewBadge" class="pill">srv0</span>
+            <span id="previewStatus" class="pill ok">● متصل</span>
+          </div>
+          <b id="previewName">سرور بدون نام</b>
+          <div id="previewEndpoint" class="preview-line" dir="ltr">http://127.0.0.1:2053/panel...</div>
+          <div class="preview-grid">
+            <div><small>هاست عمومی</small><span id="previewPublic" dir="ltr">-</span></div>
+            <div><small>توکن</small><span id="previewToken" dir="ltr">-</span></div>
+            <div><small>اینابندها</small><span id="previewInbounds">0</span></div>
+            <div><small>مسیر اجرایی</small><span id="previewBin" dir="ltr">xray</span></div>
+          </div>
+        </div>
+        <form id="serverModalForm" class="modal-form">
+          <label class="field span-2"><span>نام سرور</span><input name="name" placeholder="مثلاً آلمان / سرور دوم" required></label>
+          <label class="field span-2"><span>آدرس API <small>از دید سرور</small></span><input name="host" dir="ltr" placeholder="https://panel.example.com:8443" required></label>
+          <label class="field"><span>Base path</span><input name="base_path" dir="ltr" placeholder="/panelXXXXXXXX" required></label>
+          <label class="field"><span>هاست عمومی</span><input name="public_host" dir="ltr" placeholder="IP یا دامنه برای لینک کانفیگ" required></label>
+          <label class="field span-2"><span>XUI API Token</span><span class="token-wrap"><input name="token" type="password" dir="ltr" autocomplete="off" placeholder="توکن جدید یا خالی برای بدون تغییر"><button id="toggleToken" class="btn small" type="button">👁</button></span></label>
+          <small id="tokenHint" class="field-hint span-2"></small>
+          <label class="field span-2"><span>Xray binary</span><input name="xray_bin" dir="ltr" placeholder="/usr/local/x-ui/bin/xray-linux-amd64"></label>
+        </form>
+        <div id="serverModalInbounds" class="modal-inbounds"></div>
+      </div>
+      <div class="modal-foot">
+        <button id="deleteServerModal" class="btn danger small" type="button">🗑 حذف سرور</button>
+        <div class="actions">
+          <button id="cancelServerModal" class="btn small" type="button">انصراف</button>
+          <button id="saveServerModal" class="btn primary" type="button">💾 ذخیره سرور</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/static/vendor/three.min.js"></script>
+  <script src="/static/admin.js?v=8"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+config.env
+secrets.env
+xui.env
+servers.json
+inbound_state.json
+vpn.db
+vpn.db-*
+.web_secret
+.vpn-bot.service.generated
+*.tgz
+*.bak
+.DS_Store
