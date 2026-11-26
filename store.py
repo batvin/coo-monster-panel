@@ -176,12 +176,17 @@ def init():
             CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
             CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON ticket_messages(ticket_id);
             CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+            CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
+            CREATE INDEX IF NOT EXISTS idx_wallet_requests_status ON wallet_requests(status);
+            CREATE INDEX IF NOT EXISTS idx_audit_created ON audit(created_at);
+            CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
             """
         )
 
         _ensure_column(con, "configs", "server_id", "INTEGER DEFAULT 1")
         _ensure_column(con, "configs", "links", "TEXT DEFAULT ''")
         _ensure_column(con, "configs", "enabled", "INTEGER DEFAULT 1")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_configs_enabled ON configs(enabled)")
         _ensure_column(con, "wallet_requests", "kind", "TEXT DEFAULT 'wallet'")
         _ensure_column(con, "wallet_requests", "config_id", "INTEGER DEFAULT 0")
         _ensure_column(con, "wallet_requests", "note", "TEXT DEFAULT ''")

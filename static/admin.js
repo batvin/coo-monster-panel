@@ -1247,7 +1247,9 @@
     loaders.overview();
     loadTargetServers().catch(() => {});
     initScenes();
-    setInterval(() => { loadHealth(); loadBadges(); loaders.overview(); }, 30000);
+    setInterval(() => Promise.all([
+      loadHealth(), loadBadges(), loaders.overview(),
+    ]), 30000);
     setInterval(() => {
       if (activeTab === 'servers' || activeTab === 'plans') loaders.servers().catch(() => {});
       if (activeTab === 'support') loaders.support().catch(() => {});
@@ -1268,7 +1270,7 @@
       try {
         renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
       } catch (_) { return; }
-      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
       if (THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
 
       const scene = new THREE.Scene();
@@ -1372,6 +1374,7 @@
       const clock = new THREE.Clock();
       function animate() {
         requestAnimationFrame(animate);
+        if (document.hidden || canvas.offsetParent === null) return;
         const t = clock.getElapsedTime();
         group.position.y = Math.sin(t * 1.4) * .12;
         group.rotation.y = t * (kind === 'hero' ? .25 : .4);

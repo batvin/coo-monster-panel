@@ -2,6 +2,7 @@
 """Coo Monster Panel — web admin + Telegram bot (stdlib only)."""
 
 import base64
+import gzip
 import hashlib
 import hmac
 import json
@@ -10,6 +11,7 @@ import os
 import re
 import secrets
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -44,6 +46,27 @@ def _secret():
 WEB_SECRET = _secret()
 SECRETS_FILE = ROOT / "secrets.env"
 SERVICE = os.environ.get("VPN_SERVICE", "vpn-bot")
+
+SECURITY_HEADERS = {
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self' data:; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    ),
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    "Cross-Origin-Resource-Policy": "same-origin",
+}
+COMPRESSIBLE_TYPES = {
+    "application/json", "text/html", "text/css", "text/plain",
+    "application/javascript", "application/xml",
+}
+LOGIN_FAILURES = {}
+LOGIN_LOCK = threading.Lock()
+LOGIN_MAX_FAILURES = 8
+LOGIN_WINDOW = 300
 
 
 def mask_secret(value, keep=4):
@@ -219,6 +242,33 @@ def valid_cookie(header):
         return False
 
 
+def login_allowed(address):
+    now = time.time()
+    with LOGIN_LOCK:
+        if len(LOGIN_FAILURES) > 1000:
+            for key in list(LOGIN_FAILURES):
+                if now - LOGIN_FAILURES[key][0] > LOGIN_WINDOW:
+                    LOGIN_FAILURES.pop(key, None)
+        record = LOGIN_FAILURES.get(address)
+        if not record or now - record[0] > LOGIN_WINDOW:
+            LOGIN_FAILURES[address] = (now, 0)
+            return True
+        return record[1] < LOGIN_MAX_FAILURES
+
+
+def login_failed(address):
+    now = time.time()
+    with LOGIN_LOCK:
+        record = LOGIN_FAILURES.get(address)
+        count = record[1] if record and now - record[0] <= LOGIN_WINDOW else 0
+        LOGIN_FAILURES[address] = (now, count + 1)
+
+
+def login_succeeded(address):
+    with LOGIN_LOCK:
+        LOGIN_FAILURES.pop(address, None)
+
+
 def normalized_targets(value):
     targets = []
     for item in value or []:
@@ -257,20 +307,47 @@ def watch_inbounds():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "CooMonsterAdmin/2.0"
+    server_version = "CooMonsterAdmin"
+    sys_version = ""
+    protocol_version = "HTTP/1.1"
 
-    def _json(self, obj, status=200, headers=None):
-        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    def _send(self, body, content_type, status=200, headers=None,
+              cache="no-store", compressible=True):
+        headers = dict(headers or {})
+        for key, value in SECURITY_HEADERS.items():
+            headers.setdefault(key, value)
+        headers.setdefault("Cache-Control", cache)
+        kind = content_type.split(";", 1)[0].strip().lower()
+        if (compressible and self.command != "HEAD" and len(body) >= 1024
+                and kind in COMPRESSIBLE_TYPES
+                and "gzip" in self.headers.get("Accept-Encoding", "").lower()):
+            body = gzip.compress(body, compresslevel=6)
+            vary = headers.get("Vary")
+            headers["Vary"] = (vary + ", Accept-Encoding") if vary else "Accept-Encoding"
+            headers["Content-Encoding"] = "gzip"
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        for key, value in (headers or {}).items():
+        for key, value in headers.items():
             self.send_header(key, value)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def _json(self, obj, status=200, headers=None):
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self._send(body, "application/json; charset=utf-8", status=status, headers=headers)
+
+    def _origin_ok(self):
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        try:
+            return urlparse(origin).netloc.lower() == (
+                self.headers.get("Host") or ""
+            ).lower()
+        except Exception:
+            return False
 
     def _file(self, path):
         if not path.is_file():
@@ -280,14 +357,26 @@ class Handler(BaseHTTPRequestHandler):
         if content_type.startswith("text/") or content_type in ("application/javascript", "application/json"):
             content_type += "; charset=utf-8"
         body = path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(body)
+        etag = '"' + hashlib.sha256(body).hexdigest()[:16] + '"'
+        if path.name == "three.min.js":
+            cache = "public, max-age=31536000, immutable"
+        elif path.name in ("admin.html", "admin.js", "admin.css"):
+            cache = "no-cache"
+        else:
+            cache = "public, max-age=3600"
+        headers = {"ETag": etag}
+        for key, value in SECURITY_HEADERS.items():
+            headers.setdefault(key, value)
+        headers["Cache-Control"] = cache
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache)
+            for key, value in SECURITY_HEADERS.items():
+                self.send_header(key, value)
+            self.end_headers()
+            return
+        self._send(body, content_type, headers=headers, cache=cache)
 
     def _body(self):
         try:
@@ -482,14 +571,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if not self._origin_ok():
+            return self._json({"error": "invalid origin"}, 403)
 
         if path == "/api/admin/login":
+            address = self.client_address[0]
+            if not login_allowed(address):
+                time.sleep(1)
+                return self._json({"error": "Too many attempts. Try again later."}, 429)
             data = self._body()
             if str(data.get("password", "")) == admin_password():
+                login_succeeded(address)
                 return self._json(
                     {"ok": True},
                     headers={"Set-Cookie": self._cookie(make_cookie(), SESSION_TTL)},
                 )
+            login_failed(address)
             time.sleep(0.4)
             return self._json({"ok": False, "error": "رمز اشتباه است"}, 401)
 
@@ -503,6 +600,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/servers":
             action = data.get("action")
+            xui_client.clear_health_cache()
             try:
                 if action == "add":
                     item = servers.add_server(data)

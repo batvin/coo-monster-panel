@@ -189,6 +189,10 @@ systemctl daemon-reload
 systemctl enable --now vpn-bot
 rm -f "$GENERATED_UNIT"
 
+for secret_file in servers.json vpn.db .web_secret; do
+  [ -f "$secret_file" ] && chmod 600 "$secret_file"
+done
+
 sleep 2
 if ! systemctl is-active --quiet vpn-bot; then
   echo "ERROR: service failed to start. Check: journalctl -u vpn-bot -n 50" >&2

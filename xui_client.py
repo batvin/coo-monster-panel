@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import subprocess
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,6 +22,9 @@ PUBLIC_HOST = CONF.get("PUBLIC_HOST", "").strip()
 XRAY_BIN = CONF.get("XRAY_BIN", "/usr/local/x-ui/bin/xray-linux-amd64")
 
 _pub_cache = {}
+_health_cache = {}
+_health_lock = threading.Lock()
+HEALTH_TTL = 15
 
 
 class XuiError(RuntimeError):
@@ -80,12 +84,26 @@ def _request(method, path, body=None, server=None, timeout=12):
     return obj
 
 
+def clear_health_cache():
+    with _health_lock:
+        _health_cache.clear()
+
+
 def health(server=None):
+    key = str(server or "default")
+    now = time.time()
+    with _health_lock:
+        cached = _health_cache.get(key)
+        if cached and now - cached[0] < HEALTH_TTL:
+            return dict(cached[1])
     try:
         data = _request("GET", "/panel/api/inbounds/list", server=server, timeout=6)
-        return {"ok": True, "inbounds": len(data.get("obj") or [])}
+        result = {"ok": True, "inbounds": len(data.get("obj") or [])}
     except XuiError as exc:
-        return {"ok": False, "error": str(exc)}
+        result = {"ok": False, "error": str(exc)}
+    with _health_lock:
+        _health_cache[key] = (now, result)
+    return dict(result)
 
 
 def inbounds(server=None):
