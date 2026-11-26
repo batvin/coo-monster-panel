@@ -61,7 +61,7 @@ SECURITY_HEADERS = {
 }
 COMPRESSIBLE_TYPES = {
     "application/json", "text/html", "text/css", "text/plain",
-    "application/javascript", "application/xml",
+    "application/javascript", "text/javascript", "application/xml",
 }
 LOGIN_FAILURES = {}
 LOGIN_LOCK = threading.Lock()
