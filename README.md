@@ -21,8 +21,8 @@ Everything is installed with your own server details. The repository contains no
 
 - Ubuntu 22.04 / 24.04 (or another systemd-based Linux distro)
 - Python 3.8+ and `curl`
-- A working 3x-ui installation with API access enabled
-- A Telegram bot token from [@BotFather](https://t.me/BotFather) and your numeric ID from [@userinfobot](https://t.me/userinfobot) — these may also be entered later in the terminal panel
+- A working 3x-ui installation with API access enabled (details entered after install)
+- A Telegram bot token from [@BotFather](https://t.me/BotFather) and your numeric ID from [@userinfobot](https://t.me/userinfobot) — both entered after install
 
 ## Quick install
 
@@ -32,31 +32,24 @@ cd coo-monster-panel
 sudo bash deploy/install.sh
 ```
 
-The installer asks for:
+The installer asks for **only one thing**: the web panel password. Type your own, or leave it empty to generate a strong one. It never asks for x-ui details, bot token, admin ID, SOCKS5 or the port.
 
-| Value | Where to get it |
-| --- | --- |
-| 3x-ui API host | Usually `http://127.0.0.1:2053` |
-| 3x-ui base path | The hidden path in your panel URL, e.g. `/panelabc123` |
-| Public host | Your server IP or domain — used in customer config links |
-| 3x-ui API token | Your 3x-ui panel API token |
-| Bot token | From @BotFather — optional now, set later in the terminal panel |
-| Admin ID | Your numeric Telegram ID — optional now, set later in the terminal panel |
-| Web password | Type your own, or leave empty to generate a strong one |
-| Web port | Default `3001` |
+After install it prints the local port and the exact SSH tunnel command to reach the panel.
+
+x-ui host/path/token, public host, bot token, admin ID and SOCKS5 are configured later in:
+
+- the terminal panel: `coo-monster`
+- the web panel: **Servers** and **Settings**
 
 It writes `config.env`, `secrets.env` and `xui.env` (all mode `600`), installs `/etc/systemd/system/vpn-bot.service`, starts `vpn-bot`, and checks `/api/health`.
 
 Validate first without changing anything:
 
 ```bash
-bash deploy/install.sh --dry-run
-# provide values via env for a fully non-interactive check
-XUI_BASE_PATH=/panelabc PUBLIC_HOST=1.2.3.4 XUI_API_TOKEN=x \
-  ADMIN_WEB_PASSWORD=x bash deploy/install.sh --dry-run
+ADMIN_WEB_PASSWORD=dummy bash deploy/install.sh --dry-run
 ```
 
-Change settings later:
+`--reconfigure` only asks for a new web panel password; it keeps existing x-ui, bot and proxy settings:
 
 ```bash
 sudo bash deploy/install.sh --reconfigure

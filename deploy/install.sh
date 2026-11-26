@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Installer for Coo Monster Panel. Run from the repository root:
 #   sudo bash deploy/install.sh
-# Non-interactive example (BOT_TOKEN and ADMIN_ID are optional; set them later in the terminal panel):
-#   XUI_BASE_PATH=/panelabc PUBLIC_HOST=1.2.3.4 XUI_API_TOKEN=... \
-#     sudo -E bash deploy/install.sh
+# Only the web panel password is asked. x-ui, Telegram bot and SOCKS5 settings
+# can be entered later in the terminal panel (coo-monster) or the web panel.
+# Advanced non-interactive example (everything except the password stays optional):
+#   ADMIN_WEB_PASSWORD=... sudo -E bash deploy/install.sh
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,8 +13,9 @@ PY="${PYTHON_BIN:-$(command -v python3 || true)}"
 
 usage() {
   echo "Usage: sudo bash deploy/install.sh [--reconfigure] [--dry-run]"
-  echo "  --reconfigure  prompt again even if config files already exist"
+  echo "  --reconfigure  ask for a new web panel password even if it is already set"
   echo "  --dry-run      validate and show the plan without writing or starting services"
+  echo "  The only interactive question is the web panel password."
 }
 
 if [ -z "$PY" ]; then echo "ERROR: python3 is required." >&2; exit 1; fi
@@ -38,18 +40,6 @@ fi
 APP_GROUP="$(id -gn "$APP_USER")"
 UNIT="/etc/systemd/system/vpn-bot.service"
 
-ask() {
-  local name="$1" label="$2" default="${3:-}" value=""
-  if [ -n "${!name+x}" ]; then return 0; fi
-  if [ -n "$default" ]; then
-    read -r -p "$label [$default]: " value
-    value="${value:-$default}"
-  else
-    read -r -p "$label: " value
-  fi
-  printf -v "$name" '%s' "$value"
-}
-
 ask_secret() {
   local name="$1" label="$2" value=""
   if [ -n "${!name+x}" ]; then return 0; fi
@@ -65,53 +55,60 @@ existing() {
 }
 
 GENERATED_PASSWORD=0
+VPN_PORT="${VPN_PORT:-3001}"
 
 if [ -f config.env ] && [ "$RECONFIGURE" -eq 0 ]; then
-  echo "Keeping existing config.env (use --reconfigure to change it)."
+  echo "Keeping existing config.env."
+  SERVER_NAME="$(existing config.env SERVER_NAME)"
   XUI_HOST="$(existing config.env XUI_HOST)"
   XUI_BASE_PATH="$(existing config.env XUI_BASE_PATH)"
   PUBLIC_HOST="$(existing config.env PUBLIC_HOST)"
-  SERVER_NAME="$(existing config.env SERVER_NAME)"
   XRAY_BIN="$(existing config.env XRAY_BIN)"
 else
-  ask XUI_HOST "3x-ui API host" "http://127.0.0.1:2053"
-  ask XUI_BASE_PATH "3x-ui base path from your panel URL (e.g. /panelabc123)"
-  ask PUBLIC_HOST "Public IP or domain used in client config links"
-  ask SERVER_NAME "Server name" "Main server"
-  ask XRAY_BIN "Path to xray binary" "/usr/local/x-ui/bin/xray-linux-amd64"
+  echo "x-ui settings are not requested during install; configure them later in coo-monster."
 fi
+: "${SERVER_NAME:=Main server}"
+: "${XUI_HOST:=http://127.0.0.1:2053}"
+: "${XUI_BASE_PATH:=}"
+: "${PUBLIC_HOST:=}"
+: "${XRAY_BIN:=/usr/local/x-ui/bin/xray-linux-amd64}"
 
 if [ -f xui.env ] && [ "$RECONFIGURE" -eq 0 ]; then
   echo "Keeping existing xui.env."
   XUI_API_TOKEN="$(existing xui.env XUI_API_TOKEN)"
 else
-  ask_secret XUI_API_TOKEN "3x-ui API token"
+  echo "XUI API token is not requested during install; add it later in the web panel."
 fi
+: "${XUI_API_TOKEN:=}"
 
-if [ -f secrets.env ] && [ "$RECONFIGURE" -eq 0 ]; then
-  echo "Keeping existing secrets.env."
+if [ -f secrets.env ]; then
   BOT_TOKEN="$(existing secrets.env BOT_TOKEN)"
   ADMIN_ID="$(existing secrets.env ADMIN_ID)"
+  TELEGRAM_SOCKS5="$(existing secrets.env TELEGRAM_SOCKS5)"
+fi
+if [ -f secrets.env ] && [ "$RECONFIGURE" -eq 0 ]; then
+  echo "Keeping existing secrets.env (web password unchanged)."
   ADMIN_WEB_PASSWORD="$(existing secrets.env ADMIN_WEB_PASSWORD)"
 else
-  echo "Bot token and admin ID may be left empty and set later in the terminal panel."
-  ask_secret BOT_TOKEN "Telegram bot token from @BotFather (optional)"
-  ask ADMIN_ID "Your numeric Telegram ID from @userinfobot (optional)"
   ask_secret ADMIN_WEB_PASSWORD "Web panel password (leave empty to generate)"
 fi
+: "${BOT_TOKEN:=}"
+: "${ADMIN_ID:=}"
+: "${TELEGRAM_SOCKS5:=}"
 
-ask VPN_PORT "Local web panel port" "3001"
+if [ -z "${ADMIN_WEB_PASSWORD:-}" ]; then
+  ADMIN_WEB_PASSWORD="$($PY -c 'import secrets; print(secrets.token_urlsafe(18))')"
+  GENERATED_PASSWORD=1
+fi
 
 XUI_HOST="${XUI_HOST%/}"
-[[ "$XUI_BASE_PATH" == /* ]] || XUI_BASE_PATH="/$XUI_BASE_PATH"
+XUI_BASE_PATH="${XUI_BASE_PATH#/}"
 XUI_BASE_PATH="${XUI_BASE_PATH%/}"
+[[ -n "$XUI_BASE_PATH" ]] && XUI_BASE_PATH="/$XUI_BASE_PATH"
 PUBLIC_HOST="${PUBLIC_HOST#http://}"
 PUBLIC_HOST="${PUBLIC_HOST#https://}"
 PUBLIC_HOST="${PUBLIC_HOST%/}"
 
-for required in XUI_BASE_PATH PUBLIC_HOST XUI_API_TOKEN ADMIN_WEB_PASSWORD; do
-  if [ -z "${!required:-}" ]; then echo "ERROR: $required must not be empty." >&2; exit 1; fi
-done
 if [ -n "${ADMIN_ID:-}" ] && ! [[ "$ADMIN_ID" =~ ^[0-9]+$ ]]; then
   echo "ERROR: ADMIN_ID must be numeric when provided." >&2; exit 1
 fi
@@ -121,12 +118,10 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "DRY RUN OK. Planned settings:"
   echo "  app dir:     $APP_DIR"
   echo "  service user:$APP_USER"
-  echo "  x-ui host:   $XUI_HOST$XUI_BASE_PATH"
-  echo "  public host: $PUBLIC_HOST"
-  echo "  panel port:  $VPN_PORT"
+  echo "  panel port:  $VPN_PORT (bound to 127.0.0.1)"
   echo "  command:     coo-monster"
-  echo "  secrets:     provided (not displayed)"
-  echo "  bot/admin:   provided now, or set later in the terminal panel"
+  echo "  password:    will be stored in secrets.env (not displayed)"
+  echo "  x-ui/bot:    not configured during install; set later in coo-monster or the web panel"
   exit 0
 fi
 
@@ -151,7 +146,7 @@ cat > secrets.env <<EOF
 BOT_TOKEN=$BOT_TOKEN
 ADMIN_ID=$ADMIN_ID
 ADMIN_WEB_PASSWORD=$ADMIN_WEB_PASSWORD
-TELEGRAM_SOCKS5=
+TELEGRAM_SOCKS5=$TELEGRAM_SOCKS5
 EOF
 
 chmod 600 config.env xui.env secrets.env
@@ -203,17 +198,18 @@ if command -v curl >/dev/null 2>&1; then
 fi
 
 echo "Install complete."
-echo "  Web panel: http://127.0.0.1:${VPN_PORT}/admin (open through an SSH tunnel)"
-echo "  Tunnel:    ssh -N -L ${VPN_PORT}:127.0.0.1:${VPN_PORT} user@your-server"
+echo "  Panel port: ${VPN_PORT} (bound to 127.0.0.1 only)"
+echo "  Open a tunnel from your computer:"
+echo "    ssh -N -L ${VPN_PORT}:127.0.0.1:${VPN_PORT} YOUR_USER@YOUR_SERVER"
+echo "  Then visit: http://127.0.0.1:${VPN_PORT}/admin"
 if [ "$GENERATED_PASSWORD" -eq 1 ]; then
   echo "  Generated web password: $ADMIN_WEB_PASSWORD"
   echo "  Save it now; it is stored only in secrets.env."
+else
+  echo "  Password: stored in secrets.env (use the one you entered)."
 fi
-echo "  Telegram:  send /start to your bot"
-if [ -z "${BOT_TOKEN:-}" ] || [ -z "${ADMIN_ID:-}" ]; then
-  echo "  Bot token / admin ID are not set yet. Configure them with:"
-  echo "    coo-monster"
-fi
+echo "  x-ui token, bot token, admin ID and SOCKS5 are set later in:"
+echo "    coo-monster"
+echo "  or in the web panel (Servers / Settings)."
 echo "  Terminal panel: coo-monster (works from any directory)"
 echo "  Alternative:    sudo bash $APP_DIR/deploy/panel.sh"
-echo "  SOCKS5 for Telegram is available in the terminal panel (menu 5)."
