@@ -178,6 +178,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "service": "coo-monster-panel",
                 "bot": telegram_bot.configured(),
+                "telegram_proxy": telegram_bot.proxy_configured(),
                 "xui": xui_client.health(),
                 "servers": len(servers.list_servers()),
             })

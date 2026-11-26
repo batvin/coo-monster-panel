@@ -11,6 +11,8 @@ Everything is installed with your own server details. The repository contains no
 - Per-service management: share links, renew, add days, add traffic, change UUID, on/off toggle, delete
 - Approval-based wallet top-ups and service renewals, with a dedicated **شارژ اضافه** queue in the admin panel
 - Web admin at `127.0.0.1:3001/admin` with animated glass/neon UI and bundled Three.js
+- Terminal control panel for service control, logs, health, bot credentials and proxy settings
+- Optional SOCKS5 proxy for Telegram API, for servers that cannot reach Telegram directly
 - Multi-server registry: add/edit/delete x-ui servers, live inbound discovery, auto-sync and alerts
 - Customers, orders, configs, plans, promo codes, notifications, audit log, insights and JSON backup
 - No outbound CDN dependency; the panel is reachable only through an SSH tunnel
@@ -20,7 +22,7 @@ Everything is installed with your own server details. The repository contains no
 - Ubuntu 22.04 / 24.04 (or another systemd-based Linux distro)
 - Python 3.8+ and `curl`
 - A working 3x-ui installation with API access enabled
-- A Telegram bot token from [@BotFather](https://t.me/BotFather) and your numeric ID from [@userinfobot](https://t.me/userinfobot)
+- A Telegram bot token from [@BotFather](https://t.me/BotFather) and your numeric ID from [@userinfobot](https://t.me/userinfobot) — these may also be entered later in the terminal panel
 
 ## Quick install
 
@@ -38,8 +40,8 @@ The installer asks for:
 | 3x-ui base path | The hidden path in your panel URL, e.g. `/panelabc123` |
 | Public host | Your server IP or domain — used in customer config links |
 | 3x-ui API token | Your 3x-ui panel API token |
-| Bot token | From @BotFather |
-| Admin ID | Your numeric Telegram ID |
+| Bot token | From @BotFather — optional now, set later in the terminal panel |
+| Admin ID | Your numeric Telegram ID — optional now, set later in the terminal panel |
 | Web password | Type your own, or leave empty to generate a strong one |
 | Web port | Default `3001` |
 
@@ -50,7 +52,7 @@ Validate first without changing anything:
 ```bash
 bash deploy/install.sh --dry-run
 # provide values via env for a fully non-interactive check
-XUI_BASE_PATH=/panelabc PUBLIC_HOST=1.2.3.4 XUI_API_TOKEN=x BOT_TOKEN=x ADMIN_ID=123 \
+XUI_BASE_PATH=/panelabc PUBLIC_HOST=1.2.3.4 XUI_API_TOKEN=x \
   ADMIN_WEB_PASSWORD=x bash deploy/install.sh --dry-run
 ```
 
@@ -69,6 +71,39 @@ ssh -N -L 3001:127.0.0.1:3001 YOUR_USER@YOUR_SERVER
 ```
 
 Then visit <http://127.0.0.1:3001/admin> and log in with `ADMIN_WEB_PASSWORD` from `secrets.env`.
+
+## Terminal control panel
+
+Everything needed for day-to-day control is also available in the terminal, without opening a browser:
+
+```bash
+sudo bash deploy/panel.sh
+# or
+sudo python3 control.py
+```
+
+Menu:
+
+1. Service status and health (bot configured, proxy state, x-ui state)
+2. Start / stop / restart the service
+3. View logs (`journalctl`; includes a live-follow option)
+4. Telegram bot settings — set the **bot token** and **admin ID**, or test the connection
+5. SOCKS5 settings
+6. Change the web panel password
+7. List configured x-ui servers (tokens are masked)
+
+If you skipped the bot token and admin ID during installation, choose **4** after installation, enter both values, and accept the restart prompt. The bot becomes active right away. Secrets are hidden while typing, masked on screen, and written to `secrets.env` with mode `600`.
+
+## SOCKS5 for Telegram
+
+If the server cannot reach `api.telegram.org` directly, add a SOCKS5 proxy in menu **5**:
+
+```text
+socks5://user:pass@1.2.3.4:1080
+socks5://1.2.3.4:1080
+```
+
+The proxy is used **only** for Telegram API calls; x-ui and the web panel are unaffected. Use menu **3** in that section to test `getMe` through the proxy. To stop using it, choose **2** (remove proxy) and restart the service.
 
 ## Telegram bot
 
@@ -100,8 +135,11 @@ telegram_bot.py     Bot and callback flows
 store.py            SQLite schema and data helpers
 servers.py          Multi-server registry
 xui_client.py       3x-ui API client
+socks5.py           Minimal SOCKS5 client for Telegram (stdlib only)
+control.py          Terminal control panel
 static/             Admin UI (Three.js bundled in static/vendor)
 deploy/install.sh   Interactive installer
+deploy/panel.sh     Launcher for the terminal panel
 deploy/uninstall.sh Service removal
 ```
 
@@ -110,7 +148,7 @@ Runtime files created on the server (`config.env`, `secrets.env`, `xui.env`, `se
 ## Backup and update
 
 - Download JSON backup from the **پشتیبان** section of the panel.
-- To update: `git pull`, then `sudo systemctl restart vpn-bot`.
+- To update: `git pull`, then `sudo systemctl restart vpn-bot`, or use menu **2 → ریستارت** in the terminal panel.
 - To remove the service: `sudo bash deploy/uninstall.sh`.
 
 ## Security notes

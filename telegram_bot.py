@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 import servers
+import socks5
 import store
 import xui_client
 
@@ -54,6 +55,17 @@ def configured():
     return bool(value) and not value.startswith("__") and len(value) > 20
 
 
+def proxy_url():
+    return str(os.environ.get("TELEGRAM_SOCKS5") or SECRETS.get("TELEGRAM_SOCKS5") or "").strip()
+
+
+def proxy_configured():
+    try:
+        return socks5.parse_proxy(proxy_url()) is not None
+    except socks5.Socks5Error:
+        return False
+
+
 def api(method, params=None, timeout=18):
     if not configured():
         return None
@@ -61,6 +73,24 @@ def api(method, params=None, timeout=18):
     data = None
     if params is not None:
         data = json.dumps(params).encode("utf-8")
+
+    proxy = ""
+    try:
+        proxy = proxy_url()
+    except Exception as exc:
+        print(f"[telegram] SOCKS5 config error: {exc}", flush=True)
+
+    if proxy:
+        try:
+            status, body = socks5.request(url, data=data, timeout=timeout, proxy=proxy)
+            result = json.loads(body.decode("utf-8", "replace"))
+            if status >= 400 and not result.get("ok"):
+                print(f"[telegram] HTTP {status}: {str(result.get('description'))[:200]}", flush=True)
+            return result
+        except Exception as exc:
+            print(f"[telegram] SOCKS5 {type(exc).__name__}: {exc}", flush=True)
+        return None
+
     req = urllib.request.Request(
         url,
         data=data,

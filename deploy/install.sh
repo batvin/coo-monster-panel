@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Installer for Coo Monster Panel. Run from the repository root:
 #   sudo bash deploy/install.sh
-# Non-interactive example:
-#   XUI_BASE_PATH=/panelabc PUBLIC_HOST=1.2.3.4 XUI_API_TOKEN=... BOT_TOKEN=... ADMIN_ID=... \
+# Non-interactive example (BOT_TOKEN and ADMIN_ID are optional; set them later in the terminal panel):
+#   XUI_BASE_PATH=/panelabc PUBLIC_HOST=1.2.3.4 XUI_API_TOKEN=... \
 #     sudo -E bash deploy/install.sh
 set -euo pipefail
 
@@ -40,7 +40,7 @@ UNIT="/etc/systemd/system/vpn-bot.service"
 
 ask() {
   local name="$1" label="$2" default="${3:-}" value=""
-  if [ -n "${!name:-}" ]; then return 0; fi
+  if [ -n "${!name+x}" ]; then return 0; fi
   if [ -n "$default" ]; then
     read -r -p "$label [$default]: " value
     value="${value:-$default}"
@@ -52,7 +52,7 @@ ask() {
 
 ask_secret() {
   local name="$1" label="$2" value=""
-  if [ -n "${!name:-}" ]; then return 0; fi
+  if [ -n "${!name+x}" ]; then return 0; fi
   read -r -s -p "$label: " value
   echo
   printf -v "$name" '%s' "$value"
@@ -94,8 +94,9 @@ if [ -f secrets.env ] && [ "$RECONFIGURE" -eq 0 ]; then
   ADMIN_ID="$(existing secrets.env ADMIN_ID)"
   ADMIN_WEB_PASSWORD="$(existing secrets.env ADMIN_WEB_PASSWORD)"
 else
-  ask_secret BOT_TOKEN "Telegram bot token from @BotFather"
-  ask ADMIN_ID "Your numeric Telegram ID from @userinfobot"
+  echo "Bot token and admin ID may be left empty and set later in the terminal panel."
+  ask_secret BOT_TOKEN "Telegram bot token from @BotFather (optional)"
+  ask ADMIN_ID "Your numeric Telegram ID from @userinfobot (optional)"
   ask_secret ADMIN_WEB_PASSWORD "Web panel password (leave empty to generate)"
 fi
 
@@ -108,10 +109,12 @@ PUBLIC_HOST="${PUBLIC_HOST#http://}"
 PUBLIC_HOST="${PUBLIC_HOST#https://}"
 PUBLIC_HOST="${PUBLIC_HOST%/}"
 
-for required in XUI_BASE_PATH PUBLIC_HOST XUI_API_TOKEN BOT_TOKEN ADMIN_ID ADMIN_WEB_PASSWORD; do
+for required in XUI_BASE_PATH PUBLIC_HOST XUI_API_TOKEN ADMIN_WEB_PASSWORD; do
   if [ -z "${!required:-}" ]; then echo "ERROR: $required must not be empty." >&2; exit 1; fi
 done
-if ! [[ "$ADMIN_ID" =~ ^[0-9]+$ ]]; then echo "ERROR: ADMIN_ID must be numeric." >&2; exit 1; fi
+if [ -n "${ADMIN_ID:-}" ] && ! [[ "$ADMIN_ID" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: ADMIN_ID must be numeric when provided." >&2; exit 1
+fi
 if ! [[ "$VPN_PORT" =~ ^[0-9]+$ ]]; then echo "ERROR: VPN_PORT must be numeric." >&2; exit 1; fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -121,7 +124,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "  x-ui host:   $XUI_HOST$XUI_BASE_PATH"
   echo "  public host: $PUBLIC_HOST"
   echo "  panel port:  $VPN_PORT"
-  echo "  token/bot/password: provided (not displayed)"
+  echo "  secrets:     provided (not displayed)"
+  echo "  bot/admin:   provided now, or set later in the terminal panel"
   exit 0
 fi
 
@@ -146,11 +150,12 @@ cat > secrets.env <<EOF
 BOT_TOKEN=$BOT_TOKEN
 ADMIN_ID=$ADMIN_ID
 ADMIN_WEB_PASSWORD=$ADMIN_WEB_PASSWORD
+TELEGRAM_SOCKS5=
 EOF
 
 chmod 600 config.env xui.env secrets.env
 
-"$PY" -m py_compile app.py store.py servers.py telegram_bot.py xui_client.py
+"$PY" -m py_compile app.py store.py servers.py telegram_bot.py xui_client.py socks5.py control.py
 
 GENERATED_UNIT="$APP_DIR/.vpn-bot.service.generated"
 APP_USER="$APP_USER" APP_GROUP="$APP_GROUP" APP_DIR="$APP_DIR" PY="$PY" VPN_PORT="$VPN_PORT" \
@@ -187,3 +192,9 @@ if [ "$GENERATED_PASSWORD" -eq 1 ]; then
   echo "  Save it now; it is stored only in secrets.env."
 fi
 echo "  Telegram:  send /start to your bot"
+if [ -z "${BOT_TOKEN:-}" ] || [ -z "${ADMIN_ID:-}" ]; then
+  echo "  Bot token / admin ID are not set yet. Configure them with:"
+  echo "    sudo bash deploy/panel.sh"
+fi
+echo "  Terminal panel: sudo bash deploy/panel.sh"
+echo "  SOCKS5 for Telegram is available in the terminal panel (menu 5)."
