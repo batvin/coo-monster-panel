@@ -7,15 +7,19 @@ import hmac
 import json
 import mimetypes
 import os
+import re
 import secrets
+import subprocess
 import threading
 import time
+import urllib.request
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 import servers
+import socks5
 import store
 import telegram_bot
 import xui_client
@@ -38,6 +42,143 @@ def _secret():
 
 
 WEB_SECRET = _secret()
+SECRETS_FILE = ROOT / "secrets.env"
+SERVICE = os.environ.get("VPN_SERVICE", "vpn-bot")
+
+
+def mask_secret(value, keep=4):
+    value = str(value or "")
+    if not value:
+        return ""
+    if len(value) <= keep:
+        return "*" * len(value)
+    return "*" * (len(value) - keep) + value[-keep:]
+
+
+def read_secrets():
+    telegram_bot.reload_secrets()
+    return dict(telegram_bot.SECRETS)
+
+
+def write_secrets(updates):
+    """Update secrets.env atomically, keeping mode 600 and never returning values."""
+    lines = SECRETS_FILE.read_text(encoding="utf-8", errors="replace").splitlines() if SECRETS_FILE.exists() else []
+    result = []
+    seen = set()
+    for line in lines:
+        key = line.split("=", 1)[0].strip() if "=" in line else ""
+        if key in updates and line.strip() and not line.strip().startswith("#"):
+            result.append("{}={}".format(key, updates[key]))
+            seen.add(key)
+        else:
+            result.append(line)
+    for key, value in updates.items():
+        if key not in seen:
+            result.append("{}={}".format(key, value))
+
+    temporary = SECRETS_FILE.with_name("secrets.env.tmp")
+    temporary.write_text("\n".join(result) + "\n", encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    try:
+        if SECRETS_FILE.exists() and hasattr(os, "chown"):
+            current = SECRETS_FILE.stat()
+            os.chown(temporary, current.st_uid, current.st_gid)
+    except OSError:
+        pass
+    os.replace(temporary, SECRETS_FILE)
+    os.chmod(SECRETS_FILE, 0o600)
+    telegram_bot.reload_secrets()
+
+
+def bot_settings_payload():
+    secrets = read_secrets()
+    proxy = secrets.get("TELEGRAM_SOCKS5", "")
+    try:
+        proxy_mask = socks5.mask_proxy(proxy) if proxy else ""
+    except socks5.Socks5Error:
+        proxy_mask = "invalid"
+    return {
+        "bot_token_set": bool(secrets.get("BOT_TOKEN")),
+        "bot_token_mask": mask_secret(secrets.get("BOT_TOKEN", ""), 6),
+        "admin_id": secrets.get("ADMIN_ID", ""),
+        "proxy_set": bool(proxy),
+        "proxy_mask": proxy_mask,
+        "bot_active": telegram_bot.configured(),
+        "proxy_active": telegram_bot.proxy_configured(),
+    }
+
+
+def sanitize_api_text(text, secret_values):
+    text = str(text)
+    for value in secret_values:
+        if value and len(value) > 3:
+            text = text.replace(value, "***")
+    return text[:300]
+
+
+def proxy_secret_values(proxy):
+    values = []
+    if proxy:
+        values.append(proxy)
+        try:
+            parsed = socks5.parse_proxy(proxy)
+        except socks5.Socks5Error:
+            parsed = None
+        if parsed and parsed.get("password"):
+            values.append(parsed["password"])
+    return values
+
+
+def validate_bot_token(value):
+    return bool(re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{20,}", value or ""))
+
+
+def test_telegram_token(token, proxy=""):
+    """Call Telegram getMe without starting the bot loop and without echoing secrets."""
+    url = "https://api.telegram.org/bot{}/getMe".format(token)
+    secret_values = [token] + proxy_secret_values(proxy)
+    try:
+        if proxy:
+            status, body = socks5.request(url, timeout=12, proxy=proxy)
+            text = body.decode("utf-8", "replace")
+            if status >= 400:
+                return False, "HTTP {}: {}".format(status, sanitize_api_text(text, secret_values))
+            data = json.loads(text)
+        else:
+            with urllib.request.urlopen(url, timeout=12) as response:
+                data = json.loads(response.read().decode("utf-8", "replace"))
+        if data.get("ok"):
+            return True, "OK — bot @{}".format(data.get("result", {}).get("username", "?"))
+        return False, sanitize_api_text(
+            data.get("description") or "invalid response", secret_values
+        )
+    except Exception as exc:
+        return False, "{}: {}".format(
+            type(exc).__name__, sanitize_api_text(exc, secret_values)
+        )
+
+
+def restart_service_later():
+    """Apply saved secrets shortly after the HTTP response has been sent."""
+    def worker():
+        commands = []
+        if getattr(os, "geteuid", lambda: -1)() == 0:
+            commands.append(["systemctl", "restart", SERVICE])
+        else:
+            commands.append(["sudo", "-n", "systemctl", "restart", SERVICE])
+            commands.append(["systemctl", "restart", SERVICE])
+        for command in commands:
+            try:
+                result = subprocess.run(
+                    command, check=False, timeout=20,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                if result.returncode == 0:
+                    return
+            except Exception:
+                continue
+    threading.Timer(1.0, worker).start()
+    return True
 
 
 def admin_password():
@@ -197,6 +338,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self._auth():
             return self._json({"error": "unauthorized"}, 401)
+
+        if path == "/api/admin/bot-settings":
+            return self._json(bot_settings_payload())
 
         if path == "/api/admin/overview":
             return self._json(store.overview())
@@ -642,6 +786,59 @@ class Handler(BaseHTTPRequestHandler):
             store.add_broadcast(text)
             store.log("web", "broadcast", text[:80])
             return self._json({"ok": True, "message": "پیام به صف ارسال اضافه شد"})
+
+        if path == "/api/admin/bot-settings":
+            action = data.get("action") or "save"
+            secrets = read_secrets()
+
+            if action == "test":
+                token = str(data.get("bot_token") or "").strip() or secrets.get("BOT_TOKEN", "")
+                if not token:
+                    return self._json({"ok": False, "error": "Bot token is not set."}, 400)
+                proxy = str(data.get("proxy") or "").strip() or secrets.get("TELEGRAM_SOCKS5", "")
+                ok, message = test_telegram_token(token, proxy)
+                return self._json({"ok": ok, "message": message}, 200 if ok else 400)
+
+            if action == "remove_proxy":
+                write_secrets({"TELEGRAM_SOCKS5": ""})
+                store.log("web", "remove_bot_proxy", "proxy=removed")
+                restart_service_later()
+                return self._json({
+                    "ok": True, "message": "Proxy removed. Service is restarting.",
+                    "settings": bot_settings_payload(),
+                })
+
+            updates = {}
+            token = str(data.get("bot_token") or "").strip()
+            if token:
+                if not validate_bot_token(token):
+                    return self._json({
+                        "ok": False,
+                        "error": "Token looks invalid. Expected 123456:ABC-...",
+                    }, 400)
+                updates["BOT_TOKEN"] = token
+            admin_id = str(data.get("admin_id") or "").strip()
+            if admin_id:
+                if not admin_id.isdigit():
+                    return self._json({"ok": False, "error": "Admin ID must be numeric."}, 400)
+                updates["ADMIN_ID"] = admin_id
+            proxy = str(data.get("proxy") or "").strip()
+            if proxy:
+                try:
+                    socks5.parse_proxy(proxy)
+                except socks5.Socks5Error as exc:
+                    return self._json({"ok": False, "error": str(exc)}, 400)
+                updates["TELEGRAM_SOCKS5"] = proxy
+            if not updates:
+                return self._json({"ok": False, "error": "Nothing to save."}, 400)
+            write_secrets(updates)
+            store.log("web", "update_bot_settings", ", ".join(sorted(updates)))
+            restart_service_later()
+            return self._json({
+                "ok": True,
+                "message": "Saved. Service is restarting to apply the new settings.",
+                "settings": bot_settings_payload(),
+            })
 
         if path == "/api/admin/settings":
             for key in ("welcome", "channel", "support", "support_greeting", "notify_inbound", "auto_notify_order"):

@@ -105,7 +105,7 @@ def save_env(path, updates):
 def mask(value, keep=4):
     value = str(value or "")
     if not value:
-        return "تنظیم نشده"
+        return "not set"
     if len(value) <= keep:
         return "*" * len(value)
     return "*" * (len(value) - keep) + value[-keep:]
@@ -128,7 +128,7 @@ def run_command(args, capture=False):
     except FileNotFoundError:
         if capture:
             return subprocess.CompletedProcess(command, 127, "", "command not found")
-        print("دستور پیدا نشد: {}".format(command[0]))
+        print("command not found: {}".format(command[0]))
         return subprocess.CompletedProcess(command, 127, None, None)
 
 
@@ -136,8 +136,8 @@ def service_state():
     active = run_command(["systemctl", "is-active", SERVICE], capture=True)
     enabled = run_command(["systemctl", "is-enabled", SERVICE], capture=True)
     return (
-        (active.stdout or "").strip() or "نامشخص",
-        (enabled.stdout or "").strip() or "نامشخص",
+        (active.stdout or "").strip() or "unknown",
+        (enabled.stdout or "").strip() or "unknown",
     )
 
 
@@ -198,10 +198,10 @@ def test_telegram(token, proxy=""):
             with urllib.request.urlopen(url, timeout=12) as response:
                 data = json.loads(response.read().decode("utf-8", "replace"))
         if data.get("ok"):
-            return True, "اتصال تلگرام برقرار است — ربات @{username}".format(
+            return True, "Telegram connection OK — bot @{username}".format(
                 username=data.get("result", {}).get("username", "?")
             )
-        return False, sanitize(data.get("description") or "پاسخ نامعتبر", secrets_values(secrets, proxy))
+        return False, sanitize(data.get("description") or "invalid response", secrets_values(secrets, proxy))
     except Exception as exc:
         return False, "{}: {}".format(
             type(exc).__name__, sanitize(exc, secrets_values(secrets, proxy))
@@ -209,30 +209,30 @@ def test_telegram(token, proxy=""):
 
 
 def ask_yes_no(prompt, default=True):
-    suffix = " [ب/ن] (پیشفرض: ب): " if default else " [ب/ن] (پیشفرض: ن): "
+    suffix = " [y/n] (default: y): " if default else " [y/n] (default: n): "
     answer = input(prompt + suffix).strip().lower()
     if not answer:
         return default
-    return answer in ("ب", "y", "yes", "1")
+    return answer in ("y", "yes", "1")
 
 
 def pause():
     try:
-        input("\nبرای ادامه Enter بزنید...")
+        input("\nPress Enter to continue...")
     except (EOFError, KeyboardInterrupt):
         print()
 
 
 def restart_if_asked():
-    if ask_yes_no("سرویس همین حالا ریستارت شود؟", True):
-        print("در حال ریستارت سرویس...")
+    if ask_yes_no("Restart the service now?", True):
+        print("Restarting service...")
         run_command(["systemctl", "restart", SERVICE])
         time.sleep(2)
         active, _ = service_state()
         result = health()
-        print("وضعیت سرویس: {} | سلامت: {}".format(active, "OK" if result.get("ok") else "خطا"))
+        print("Service: {} | health: {}".format(active, "OK" if result.get("ok") else "ERROR"))
         if not result.get("ok"):
-            print("برای دیدن دلیل خطا: journalctl -u {} -n 50 --no-pager".format(SERVICE))
+            print("Check logs: journalctl -u {} -n 50 --no-pager".format(SERVICE))
     pause()
 
 
@@ -241,72 +241,72 @@ def show_status():
     active, enabled = service_state()
     result = health()
     port = panel_port()
-    print("\n=== وضعیت سرویس ===")
-    print("سرویس:        {} / {}".format(active, enabled))
-    print("پنل وب:       http://127.0.0.1:{}/admin".format(port))
-    print("تونل SSH:     ssh -N -L {0}:127.0.0.1:{0} user@your-server".format(port))
-    print("ربات تلگرام:  {}".format("فعال" if result.get("bot") else "تنظیم نشده"))
-    print("توکن ربات:    {}".format(mask(secrets.get("BOT_TOKEN", ""), 6)))
-    print("آیدی ادمین:   {}".format(secrets.get("ADMIN_ID") or "تنظیم نشده"))
-    print("پروکسی Telegram: {}".format(socks5.mask_proxy(secrets.get("TELEGRAM_SOCKS5", ""))))
+    print("\n=== Service status ===")
+    print("Service:       {} / {}".format(active, enabled))
+    print("Web panel:    http://127.0.0.1:{}/admin".format(port))
+    print("SSH tunnel:   ssh -N -L {0}:127.0.0.1:{0} user@your-server".format(port))
+    print("Telegram bot:  {}".format("active" if result.get("bot") else "not set"))
+    print("Bot token:    {}".format(mask(secrets.get("BOT_TOKEN", ""), 6)))
+    print("Admin ID:     {}".format(secrets.get("ADMIN_ID") or "not set"))
+    print("Telegram proxy: {}".format(socks5.mask_proxy(secrets.get("TELEGRAM_SOCKS5", ""))))
     xui = result.get("xui") or {}
     if isinstance(xui, dict):
         print("x-ui:         {}".format(
-            "OK ({} inbound)".format(xui.get("inbounds")) if xui.get("ok") else (xui.get("error") or "خطا")
+            "OK ({} inbound)".format(xui.get("inbounds")) if xui.get("ok") else (xui.get("error") or "ERROR")
         ))
-    print("سلامت کلی:    {}".format("OK" if result.get("ok") else (result.get("error") or "خطا")))
+    print("Overall health: {}".format("OK" if result.get("ok") else (result.get("error") or "ERROR")))
     pause()
 
 
 def service_menu():
     while True:
         active, enabled = service_state()
-        print("\n=== کنترل سرویس ({}) ===".format(active))
-        print("1) شروع")
-        print("2) توقف")
-        print("3) ریستارت")
-        print("4) وضعیت دقیق")
-        print("0) بازگشت")
-        choice = input("انتخاب: ").strip()
+        print("\n=== Service control ({}) ===".format(active))
+        print("1) Start")
+        print("2) Stop")
+        print("3) Restart")
+        print("4) Detailed status")
+        print("0) Back")
+        choice = input("Choice: ").strip()
         if choice == "1":
             run_command(["systemctl", "start", SERVICE])
-            print("سرویس شروع شد.")
+            print("Service started.")
         elif choice == "2":
             run_command(["systemctl", "stop", SERVICE])
-            print("سرویس متوقف شد.")
+            print("Service stopped.")
         elif choice == "3":
             run_command(["systemctl", "restart", SERVICE])
             time.sleep(2)
-            print("سرویس ریستارت شد.")
+            print("Service restarted.")
         elif choice == "4":
             run_command(["systemctl", "status", SERVICE, "--no-pager", "-l"])
         elif choice == "0":
             return
         else:
-            print("انتخاب نامعتبر است.")
+            print("Invalid choice.")
         if choice in ("1", "2", "3"):
             pause()
 
 
 def logs_menu():
     while True:
-        print("\n=== لاگها ===")
-        print("1) ۵۰ خط آخر")
-        print("2) ۲۰۰ خط آخر")
-        print("3) مشاهده زنده (برای خروج Ctrl+C)")
-        print("0) بازگشت")
-        choice = input("انتخاب: ").strip()
+        print("\n=== Logs ===")
+        print("1) Last 50 lines")
+        print("2) Last 200 lines")
+        print("3) Live follow (Ctrl+C to stop)")
+        print("0) Back")
+        choice = input("Choice: ").strip()
         if choice == "1":
             run_command(["journalctl", "-u", SERVICE, "-n", "50", "--no-pager"])
         elif choice == "2":
             run_command(["journalctl", "-u", SERVICE, "-n", "200", "--no-pager"])
         elif choice == "3":
-            print("برای خروج Ctrl+C بزنید.")
+            print("Press Ctrl+C to stop.")
             run_command(["journalctl", "-u", SERVICE, "-f"])
         elif choice == "0":
             return
         else:
-            print("انتخاب نامعتبر است.")
+            print("Invalid choice.")
         if choice in ("1", "2"):
             pause()
 
@@ -314,122 +314,122 @@ def logs_menu():
 def bot_menu():
     while True:
         secrets = load_env(SECRETS_FILE)
-        print("\n=== تنظیمات ربات ===")
-        print("توکن:       {}".format(mask(secrets.get("BOT_TOKEN", ""), 6)))
-        print("آیدی ادمین: {}".format(secrets.get("ADMIN_ID") or "تنظیم نشده"))
-        print("1) تنظیم توکن و آیدی ادمین (پیشنهادی)")
-        print("2) تغییر توکن ربات")
-        print("3) تغییر آیدی ادمین")
-        print("4) تست اتصال به تلگرام")
-        print("0) بازگشت")
-        choice = input("انتخاب: ").strip()
+        print("\n=== Bot settings ===")
+        print("Token:       {}".format(mask(secrets.get("BOT_TOKEN", ""), 6)))
+        print("Admin ID:    {}".format(secrets.get("ADMIN_ID") or "not set"))
+        print("1) Set bot token and admin ID (recommended)")
+        print("2) Change bot token")
+        print("3) Change admin ID")
+        print("4) Test Telegram connection")
+        print("0) Back")
+        choice = input("Choice: ").strip()
 
         if choice in ("1", "2", "3"):
             updates = {}
             if choice in ("1", "2"):
-                value = getpass.getpass("توکن ربات از @BotFather: ").strip()
+                value = getpass.getpass("Bot token from @BotFather: ").strip()
                 if ":" not in value or len(value) < 20:
-                    print("توکن به نظر نامعتبر میرسد. باید شبیه 123456:ABC-... باشد.")
+                    print("Token looks invalid. Expected format: 123456:ABC-...")
                     continue
                 updates["BOT_TOKEN"] = value
             if choice in ("1", "3"):
-                value = input("آیدی عددی تلگرام از @userinfobot: ").strip()
+                value = input("Numeric Telegram ID from @userinfobot: ").strip()
                 if not value.isdigit():
-                    print("آیدی ادمین باید عدد باشد.")
+                    print("Admin ID must be numeric.")
                     continue
                 updates["ADMIN_ID"] = value
             save_env(SECRETS_FILE, updates)
-            print("تنظیمات ربات ذخیره شد.")
+            print("Bot settings saved.")
             restart_if_asked()
         elif choice == "4":
             secrets = load_env(SECRETS_FILE)
             token = secrets.get("BOT_TOKEN", "")
             if not token:
-                print("اول توکن ربات را تنظیم کنید.")
+                print("Set the bot token first.")
             else:
                 ok, message = test_telegram(token, secrets.get("TELEGRAM_SOCKS5", ""))
-                print("{} — {}".format("موفق" if ok else "ناموفق", message))
+                print("{} — {}".format("OK" if ok else "FAILED", message))
             pause()
         elif choice == "0":
             return
         else:
-            print("انتخاب نامعتبر است.")
+            print("Invalid choice.")
 
 
 def proxy_menu():
     while True:
         secrets = load_env(SECRETS_FILE)
         current = secrets.get("TELEGRAM_SOCKS5", "")
-        print("\n=== SOCKS5 برای تلگرام ===")
-        print("وضعیت فعلی: {}".format(socks5.mask_proxy(current)))
-        print("از این پروکسی فقط برای ارتباط ربات با Telegram API استفاده میشود.")
-        print("1) تنظیم / تغییر SOCKS5")
-        print("2) حذف پروکسی")
-        print("3) تست اتصال تلگرام با پروکسی")
-        print("0) بازگشت")
-        choice = input("انتخاب: ").strip()
+        print("\n=== SOCKS5 for Telegram ===")
+        print("Current:     {}".format(socks5.mask_proxy(current)))
+        print("This proxy is used only for Telegram API calls from the bot.")
+        print("1) Set / change SOCKS5")
+        print("2) Remove proxy")
+        print("3) Test Telegram through proxy")
+        print("0) Back")
+        choice = input("Choice: ").strip()
 
         if choice == "1":
-            print("مثال: socks5://user:pass@1.2.3.4:1080  یا  socks5://1.2.3.4:1080")
-            value = input("آدرس SOCKS5: ").strip()
+            print("Example: socks5://user:pass@1.2.3.4:1080  or  socks5://1.2.3.4:1080")
+            value = input("SOCKS5 address: ").strip()
             try:
                 socks5.parse_proxy(value)
             except socks5.Socks5Error as exc:
-                print("آدرس نامعتبر: {}".format(exc))
+                print("Invalid address: {}".format(exc))
                 continue
             save_env(SECRETS_FILE, {"TELEGRAM_SOCKS5": value})
-            print("پروکسی ذخیره شد: {}".format(socks5.mask_proxy(value)))
+            print("Proxy saved: {}".format(socks5.mask_proxy(value)))
             restart_if_asked()
         elif choice == "2":
             save_env(SECRETS_FILE, {"TELEGRAM_SOCKS5": ""})
-            print("پروکسی حذف شد.")
+            print("Proxy removed.")
             restart_if_asked()
         elif choice == "3":
             secrets = load_env(SECRETS_FILE)
             token = secrets.get("BOT_TOKEN", "")
             if not token:
-                print("اول توکن ربات را تنظیم کنید.")
+                print("Set the bot token first.")
             elif not secrets.get("TELEGRAM_SOCKS5"):
-                print("اول آدرس SOCKS5 را تنظیم کنید.")
+                print("Set a SOCKS5 address first.")
             else:
                 ok, message = test_telegram(token, secrets["TELEGRAM_SOCKS5"])
-                print("{} — {}".format("موفق" if ok else "ناموفق", message))
+                print("{} — {}".format("OK" if ok else "FAILED", message))
             pause()
         elif choice == "0":
             return
         else:
-            print("انتخاب نامعتبر است.")
+            print("Invalid choice.")
 
 
 def password_menu():
-    print("\n=== رمز پنل وب ===")
-    value = getpass.getpass("رمز جدید پنل وب: ").strip()
+    print("\n=== Web panel password ===")
+    value = getpass.getpass("New web panel password: ").strip()
     if len(value) < 8:
-        print("رمز باید حداقل ۸ کاراکتر باشد.")
+        print("Password must be at least 8 characters.")
         pause()
         return
     save_env(SECRETS_FILE, {"ADMIN_WEB_PASSWORD": value})
-    print("رمز پنل وب تغییر کرد (نمایش داده نمیشود).")
+    print("Web panel password changed (not displayed).")
     restart_if_asked()
 
 
 def servers_menu():
-    print("\n=== سرورهای x-ui ===")
+    print("\n=== x-ui servers ===")
     try:
         import servers
         items = servers.list_servers()
         if not items:
-            print("سروری ثبت نشده است.")
+            print("No servers configured.")
         for server in items:
             public = servers.public_server(server)
             print(
-                "#{} | {} | {} | هاست عمومی: {} | توکن: {}".format(
+                "#{} | {} | {} | public host: {} | token: {}".format(
                     public.get("id"), public.get("name"), public.get("host"),
                     public.get("public_host") or "-", public.get("token_mask") or "-",
                 )
             )
     except Exception as exc:
-        print("خطا در خواندن سرورها: {}".format(sanitize(exc, [])))
+        print("Error reading servers: {}".format(sanitize(exc, [])))
     pause()
 
 
@@ -445,32 +445,32 @@ def main():
     }
     while True:
         print("\n" + "=" * 54)
-        print(" پنل ترمینالی کو مونستر ".center(50))
+        print(" Coo Monster Panel - Terminal ".center(50))
         print("=" * 54)
-        print("1) وضعیت سرویس و سلامت")
-        print("2) کنترل سرویس (شروع / توقف / ریستارت)")
-        print("3) مشاهده لاگها")
-        print("4) تنظیمات ربات (توکن و آیدی ادمین)")
-        print("5) تنظیمات SOCKS5 برای تلگرام")
-        print("6) تغییر رمز پنل وب")
-        print("7) نمایش سرورها")
-        print("0) خروج")
+        print("1) Service status and health")
+        print("2) Service control (start / stop / restart)")
+        print("3) View logs")
+        print("4) Bot settings (token and admin ID)")
+        print("5) SOCKS5 settings for Telegram")
+        print("6) Change web panel password")
+        print("7) List servers")
+        print("0) Exit")
         try:
-            choice = input("انتخاب: ").strip()
+            choice = input("Choice: ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nخداحافظ")
+            print("\nGoodbye")
             return
         if choice == "0":
-            print("خداحافظ")
+            print("Goodbye")
             return
         action = actions.get(choice)
         if action:
             try:
                 action()
             except (EOFError, KeyboardInterrupt):
-                print("\nبه منوی اصلی برگشتیم.")
+                print("\nBack to the main menu.")
         else:
-            print("انتخاب نامعتبر است.")
+            print("Invalid choice.")
 
 
 if __name__ == "__main__":

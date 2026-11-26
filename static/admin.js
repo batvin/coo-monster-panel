@@ -938,13 +938,40 @@
     } catch (e) { toast(e.message); }
   });
 
+  async function loadBotCredentials() {
+    const data = await api('/api/admin/bot-settings');
+    const badge = $('#botCredStatus');
+    badge.textContent = `ربات: ${data.bot_active ? 'فعال' : 'غیرفعال'} · پروکسی: ${data.proxy_active ? 'فعال' : 'غیرفعال'}`;
+    badge.className = 'badge ' + (data.bot_active ? 'ok' : '');
+    $('#botCredCurrent').textContent = [
+      `Token: ${data.bot_token_mask || 'not set'}`,
+      `Admin ID: ${data.admin_id || 'not set'}`,
+      `SOCKS5: ${data.proxy_mask || 'disabled'}`,
+    ].join(' · ');
+  }
+
+  function botCredentialPayload(form) {
+    const values = Object.fromEntries(new FormData(form));
+    return {
+      action: 'save',
+      bot_token: values.bot_token || '',
+      admin_id: values.admin_id || '',
+      proxy: values.proxy || '',
+    };
+  }
+
   loaders.settings = async () => {
-    const data = await api('/api/admin/settings');
-    Object.entries(data).forEach(([k, v]) => {
-      const el = $(`#settingsForm [name="${k}"]`);
-      if (el) el.value = v;
-    });
+    await Promise.all([
+      api('/api/admin/settings').then((data) => {
+        Object.entries(data).forEach(([k, v]) => {
+          const el = $(`#settingsForm [name="${k}"]`);
+          if (el) el.value = v;
+        });
+      }),
+      loadBotCredentials(),
+    ]);
   };
+
   $('#settingsForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
@@ -953,6 +980,59 @@
       $('#settingsResult').textContent = 'ذخیره شد ✓';
       toast('تنظیمات ذخیره شد');
     } catch (e) { toast(e.message); }
+  });
+
+  $('#botCredForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const result = $('#botCredResult');
+    try {
+      const data = await api('/api/admin/bot-settings', {
+        method: 'POST',
+        body: JSON.stringify(botCredentialPayload(form)),
+      });
+      result.textContent = data.message;
+      form.reset();
+      await loadBotCredentials();
+      toast('تنظیمات ربات ذخیره شد');
+    } catch (e) {
+      result.textContent = e.message;
+      toast(e.message);
+    }
+  });
+
+  $('#testBotCred').addEventListener('click', async () => {
+    const result = $('#botCredResult');
+    const payload = botCredentialPayload($('#botCredForm'));
+    payload.action = 'test';
+    try {
+      const data = await api('/api/admin/bot-settings', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      result.textContent = data.message;
+      toast('اتصال تلگرام برقرار است');
+    } catch (e) {
+      result.textContent = e.message;
+      toast(e.message);
+    }
+  });
+
+  $('#removeBotProxy').addEventListener('click', async () => {
+    const result = $('#botCredResult');
+    try {
+      const data = await api('/api/admin/bot-settings', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'remove_proxy' }),
+      });
+      result.textContent = data.message;
+      $('#botCredForm [name="proxy"]').value = '';
+      await loadBotCredentials();
+      toast('پروکسی حذف شد');
+    } catch (e) {
+      result.textContent = e.message;
+      toast(e.message);
+    }
   });
 
   loaders.audit = async () => {

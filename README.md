@@ -72,9 +72,11 @@ ssh -N -L 3001:127.0.0.1:3001 YOUR_USER@YOUR_SERVER
 
 Then visit <http://127.0.0.1:3001/admin> and log in with `ADMIN_WEB_PASSWORD` from `secrets.env`.
 
+Inside the web panel, open **Settings → Bot credentials and Telegram connection**. Enter the bot token and numeric admin ID there (leave a field empty to keep its current value), optionally add a SOCKS5 address, then press **Save**. The service is restarted automatically so the bot picks up the new values. **Test Telegram** calls `getMe` without exposing the token, and **Remove proxy** clears the SOCKS5 setting.
+
 ## Terminal control panel
 
-Everything needed for day-to-day control is also available in the terminal, without opening a browser:
+Everything needed for day-to-day control is also available in an English-language terminal panel, without opening a browser:
 
 ```bash
 sudo bash deploy/panel.sh
@@ -148,7 +150,7 @@ Runtime files created on the server (`config.env`, `secrets.env`, `xui.env`, `se
 ## Backup and update
 
 - Download JSON backup from the **پشتیبان** section of the panel.
-- To update: `git pull`, then `sudo systemctl restart vpn-bot`, or use menu **2 → ریستارت** in the terminal panel.
+- To update: `git pull`, then `sudo systemctl restart vpn-bot`, or use menu **2 → Restart** in the terminal panel.
 - To remove the service: `sudo bash deploy/uninstall.sh`.
 
 ## Security notes

@@ -289,6 +289,31 @@
             </form>
             <div id="settingsResult" class="result"></div>
           </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h3>توکن ربات و اتصال تلگرام</h3>
+              <span id="botCredStatus" class="badge">ربات: ...</span>
+            </div>
+            <form id="botCredForm" class="stack-form">
+              <div id="botCredCurrent" class="hint" dir="ltr"></div>
+              <label>توکن ربات از @BotFather
+                <input name="bot_token" type="password" dir="ltr" autocomplete="off" placeholder="123456:ABC... — خالی بماند تا بدون تغییر بماند">
+              </label>
+              <label>آیدی عددی ادمین از @userinfobot
+                <input name="admin_id" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="عدد — خالی بماند تا بدون تغییر بماند">
+              </label>
+              <label>پروکسی SOCKS5 مخصوص Telegram API
+                <input name="proxy" type="password" dir="ltr" autocomplete="off" placeholder="socks5://user:pass@host:1080 — خالی بماند تا بدون تغییر بماند">
+              </label>
+              <div class="actions">
+                <button class="btn primary" type="submit">💾 ذخیره</button>
+                <button id="testBotCred" class="btn ok" type="button">🔔 تست تلگرام</button>
+                <button id="removeBotProxy" class="btn danger small" type="button">حذف پروکسی</button>
+              </div>
+            </form>
+            <div id="botCredResult" class="result"></div>
+          </div>
         </section>
 
         <section id="tab-audit" class="tab">
@@ -373,6 +398,6 @@
 
   <div id="toast" class="toast"></div>
   <script src="/static/vendor/three.min.js"></script>
-  <script src="/static/admin.js?v=8"></script>
+  <script src="/static/admin.js?v=9"></script>
 </body>
 </html>

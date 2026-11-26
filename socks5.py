@@ -25,14 +25,14 @@ def parse_proxy(value):
     parts = urllib.parse.urlsplit(raw)
     scheme = (parts.scheme or "").lower()
     if scheme not in ("socks5", "socks5h"):
-        raise Socks5Error("SOCKS5 آدرس باید با socks5:// شروع شود")
+        raise Socks5Error("SOCKS5 address must start with socks5://")
     host = parts.hostname
     if not host:
-        raise Socks5Error("هاست SOCKS5 مشخص نشده است")
+        raise Socks5Error("SOCKS5 host is not set")
     try:
         port = parts.port or 1080
     except ValueError as exc:
-        raise Socks5Error("پورت SOCKS5 نامعتبر است") from exc
+        raise Socks5Error("Invalid SOCKS5 port") from exc
     return {
         "host": host,
         "port": port,
@@ -46,9 +46,9 @@ def mask_proxy(value):
     try:
         proxy = parse_proxy(value)
     except Socks5Error:
-        return "نامعتبر"
+        return "invalid"
     if not proxy:
-        return "غیرفعال"
+        return "disabled"
     auth = ""
     if proxy["username"]:
         auth = proxy["username"] + ":***@"
@@ -61,7 +61,7 @@ def _recv_exact(sock, size):
     while remaining:
         part = sock.recv(remaining)
         if not part:
-            raise Socks5Error("اتصال SOCKS5 قطع شد")
+            raise Socks5Error("SOCKS5 connection closed")
         chunks.append(part)
         remaining -= len(part)
     return b"".join(chunks)
@@ -78,7 +78,7 @@ def _address_bytes(host):
         pass
     encoded = host.encode("idna")
     if len(encoded) > 255:
-        raise Socks5Error("هاست SOCKS5 خیلی طولانی است")
+        raise Socks5Error("SOCKS5 host is too long")
     return b"\x03" + bytes([len(encoded)]) + encoded
 
 
@@ -95,10 +95,10 @@ def connect(address, proxy, timeout=15):
         sock.sendall(b"\x05" + bytes([len(methods)]) + methods)
         version, method = _recv_exact(sock, 2)
         if version != 5:
-            raise Socks5Error("سرور SOCKS5 نسخه ۵ را پشتیبانی نمیکند")
+            raise Socks5Error("SOCKS5 server does not support version 5")
         if method == 2:
             if not username:
-                raise Socks5Error("سرور SOCKS5 احراز هویت خواست ولی نام کاربری تنظیم نشده است")
+                raise Socks5Error("SOCKS5 server requested auth but no username is configured")
             auth = (
                 b"\x01"
                 + bytes([len(username.encode())]) + username.encode()
@@ -106,15 +106,15 @@ def connect(address, proxy, timeout=15):
             )
             sock.sendall(auth)
             if _recv_exact(sock, 2) != b"\x01\x00":
-                raise Socks5Error("احراز هویت SOCKS5 ناموفق بود")
+                raise Socks5Error("SOCKS5 authentication failed")
         elif method != 0:
-            raise Socks5Error("روش احراز هویت SOCKS5 پشتیبانی نمیشود")
+            raise Socks5Error("SOCKS5 auth method is not supported")
 
         request = b"\x05\x01\x00" + _address_bytes(host) + int(port).to_bytes(2, "big")
         sock.sendall(request)
         reply = _recv_exact(sock, 4)
         if reply[0] != 5 or reply[1] != 0:
-            raise Socks5Error("اتصال SOCKS5 برقرار نشد (کد {})".format(reply[1]))
+            raise Socks5Error("SOCKS5 connect failed (code {})".format(reply[1]))
         atyp = reply[3]
         if atyp == 1:
             _recv_exact(sock, 4)
@@ -124,7 +124,7 @@ def connect(address, proxy, timeout=15):
             length = _recv_exact(sock, 1)[0]
             _recv_exact(sock, length)
         else:
-            raise Socks5Error("پاسخ نامعتبر از سرور SOCKS5")
+            raise Socks5Error("Invalid response from SOCKS5 server")
         _recv_exact(sock, 2)
         return sock
     except Exception:
