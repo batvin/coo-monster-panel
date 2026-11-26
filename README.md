@@ -78,6 +78,14 @@ Inside the web panel, open **Settings → Bot credentials and Telegram connectio
 
 Everything needed for day-to-day control is also available in an English-language terminal panel, without opening a browser:
 
+After installation, the shortcut is available from any directory:
+
+```bash
+coo-monster
+```
+
+The installer writes `/usr/local/bin/coo-monster` to point at the installed panel. You can still open it directly:
+
 ```bash
 sudo bash deploy/panel.sh
 # or

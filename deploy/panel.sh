@@ -13,7 +13,7 @@ if [ -z "$PY" ]; then
 fi
 
 if [ "$EUID" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
-  echo "برای کنترل سرویس از sudo استفاده میشود (در صورت نیاز رمزتان را وارد کنید)."
+  echo "Service control uses sudo (enter your password if prompted)."
 fi
 
 exec "$PY" "$APP_DIR/control.py" "$@"

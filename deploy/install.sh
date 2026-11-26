@@ -124,6 +124,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "  x-ui host:   $XUI_HOST$XUI_BASE_PATH"
   echo "  public host: $PUBLIC_HOST"
   echo "  panel port:  $VPN_PORT"
+  echo "  command:     coo-monster"
   echo "  secrets:     provided (not displayed)"
   echo "  bot/admin:   provided now, or set later in the terminal panel"
   exit 0
@@ -170,6 +171,19 @@ Path(os.environ["APP_DIR"] + "/.vpn-bot.service.generated").write_text(template,
 PY
 
 chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
+
+mkdir -p /usr/local/bin
+APP_DIR="$APP_DIR" "$PY" - <<'PY'
+import os
+from pathlib import Path
+
+template = Path("deploy/coo-monster.sh.tpl").read_text(encoding="utf-8")
+Path("/usr/local/bin/coo-monster").write_text(
+    template.replace("__APP_DIR__", os.environ["APP_DIR"]), encoding="utf-8"
+)
+PY
+chmod 755 /usr/local/bin/coo-monster
+
 cp "$GENERATED_UNIT" "$UNIT"
 systemctl daemon-reload
 systemctl enable --now vpn-bot
@@ -194,7 +208,8 @@ fi
 echo "  Telegram:  send /start to your bot"
 if [ -z "${BOT_TOKEN:-}" ] || [ -z "${ADMIN_ID:-}" ]; then
   echo "  Bot token / admin ID are not set yet. Configure them with:"
-  echo "    sudo bash deploy/panel.sh"
+  echo "    coo-monster"
 fi
-echo "  Terminal panel: sudo bash deploy/panel.sh"
+echo "  Terminal panel: coo-monster (works from any directory)"
+echo "  Alternative:    sudo bash $APP_DIR/deploy/panel.sh"
 echo "  SOCKS5 for Telegram is available in the terminal panel (menu 5)."

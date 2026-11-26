@@ -2,6 +2,7 @@
 set -euo pipefail
 systemctl disable --now vpn-bot 2>/dev/null || true
 rm -f /etc/systemd/system/vpn-bot.service
+rm -f /usr/local/bin/coo-monster
 systemctl daemon-reload
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "Service removed. Application files kept at: $APP_DIR"

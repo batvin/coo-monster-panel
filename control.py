@@ -245,6 +245,7 @@ def show_status():
     print("Service:       {} / {}".format(active, enabled))
     print("Web panel:    http://127.0.0.1:{}/admin".format(port))
     print("SSH tunnel:   ssh -N -L {0}:127.0.0.1:{0} user@your-server".format(port))
+    print("Shortcut:     coo-monster")
     print("Telegram bot:  {}".format("active" if result.get("bot") else "not set"))
     print("Bot token:    {}".format(mask(secrets.get("BOT_TOKEN", ""), 6)))
     print("Admin ID:     {}".format(secrets.get("ADMIN_ID") or "not set"))
