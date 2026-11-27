@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Installer for Coo Monster Panel. Run from the repository root:
 #   sudo bash deploy/install.sh
-# Only the web panel password is asked. x-ui, Telegram bot and SOCKS5 settings
-# can be entered later in the terminal panel (coo-monster) or the web panel.
-# Advanced non-interactive example (everything except the password stays optional):
-#   ADMIN_WEB_PASSWORD=... sudo -E bash deploy/install.sh
+# The installer asks for the web panel password, then the local panel port.
+# x-ui, Telegram bot and SOCKS5 settings are entered later in the terminal
+# panel (coo-monster) or the web panel.
+# Advanced non-interactive example:
+#   ADMIN_WEB_PASSWORD=... VPN_PORT=3001 sudo -E bash deploy/install.sh
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,7 +16,7 @@ usage() {
   echo "Usage: sudo bash deploy/install.sh [--reconfigure] [--dry-run]"
   echo "  --reconfigure  ask for a new web panel password even if it is already set"
   echo "  --dry-run      validate and show the plan without writing or starting services"
-  echo "  The only interactive question is the web panel password."
+  echo "  Interactive questions: web password, then local panel port."
 }
 
 if [ -z "$PY" ]; then echo "ERROR: python3 is required." >&2; exit 1; fi
@@ -40,6 +41,16 @@ fi
 APP_GROUP="$(id -gn "$APP_USER")"
 UNIT="/etc/systemd/system/vpn-bot.service"
 
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  C_RESET=$'\033[0m'; C_DIM=$'\033[2m'; C_CYAN=$'\033[36m'
+  C_GREEN=$'\033[32m'; C_VIOLET=$'\033[95m'; C_AMBER=$'\033[33m'
+else
+  C_RESET=''; C_DIM=''; C_CYAN=''; C_GREEN=''; C_VIOLET=''; C_AMBER=''
+fi
+step()  { printf '%s\n' "${C_CYAN}◈${C_RESET} $*"; }
+ok()    { printf '%s\n' "${C_GREEN}✓${C_RESET} $*"; }
+info()  { printf '%s\n' "${C_DIM}  $*${C_RESET}"; }
+
 ask_secret() {
   local name="$1" label="$2" value=""
   if [ -n "${!name+x}" ]; then return 0; fi
@@ -55,17 +66,20 @@ existing() {
 }
 
 GENERATED_PASSWORD=0
-VPN_PORT="${VPN_PORT:-3001}"
+PORT_FROM_ENV=0
+[ -n "${VPN_PORT+x}" ] && PORT_FROM_ENV=1
+CURRENT_PORT="$(grep -o 'Environment=VPN_PORT=[0-9]*' "$UNIT" 2>/dev/null | head -n1 | cut -d= -f3 || true)"
+VPN_PORT="${VPN_PORT:-${CURRENT_PORT:-3001}}"
 
 if [ -f config.env ] && [ "$RECONFIGURE" -eq 0 ]; then
-  echo "Keeping existing config.env."
+  info "Keeping existing config.env."
   SERVER_NAME="$(existing config.env SERVER_NAME)"
   XUI_HOST="$(existing config.env XUI_HOST)"
   XUI_BASE_PATH="$(existing config.env XUI_BASE_PATH)"
   PUBLIC_HOST="$(existing config.env PUBLIC_HOST)"
   XRAY_BIN="$(existing config.env XRAY_BIN)"
 else
-  echo "x-ui settings are not requested during install; configure them later in coo-monster."
+  info "x-ui settings are not requested during install; configure them later in coo-monster."
 fi
 : "${SERVER_NAME:=Main server}"
 : "${XUI_HOST:=http://127.0.0.1:2053}"
@@ -74,20 +88,21 @@ fi
 : "${XRAY_BIN:=/usr/local/x-ui/bin/xray-linux-amd64}"
 
 if [ -f xui.env ] && [ "$RECONFIGURE" -eq 0 ]; then
-  echo "Keeping existing xui.env."
+  info "Keeping existing xui.env."
   XUI_API_TOKEN="$(existing xui.env XUI_API_TOKEN)"
 else
-  echo "XUI API token is not requested during install; add it later in the web panel."
+  info "XUI API token is not requested during install; add it later in the web panel."
 fi
 : "${XUI_API_TOKEN:=}"
 
+step "Secure web access"
 if [ -f secrets.env ]; then
   BOT_TOKEN="$(existing secrets.env BOT_TOKEN)"
   ADMIN_ID="$(existing secrets.env ADMIN_ID)"
   TELEGRAM_SOCKS5="$(existing secrets.env TELEGRAM_SOCKS5)"
 fi
 if [ -f secrets.env ] && [ "$RECONFIGURE" -eq 0 ]; then
-  echo "Keeping existing secrets.env (web password unchanged)."
+  info "Keeping existing secrets.env (web password unchanged)."
   ADMIN_WEB_PASSWORD="$(existing secrets.env ADMIN_WEB_PASSWORD)"
 else
   ask_secret ADMIN_WEB_PASSWORD "Web panel password (leave empty to generate)"
@@ -99,6 +114,11 @@ fi
 if [ -z "${ADMIN_WEB_PASSWORD:-}" ]; then
   ADMIN_WEB_PASSWORD="$($PY -c 'import secrets; print(secrets.token_urlsafe(18))')"
   GENERATED_PASSWORD=1
+fi
+
+if [ "$PORT_FROM_ENV" -eq 0 ]; then
+  read -r -p "Local web panel port [$VPN_PORT]: " value
+  VPN_PORT="${value:-$VPN_PORT}"
 fi
 
 XUI_HOST="${XUI_HOST%/}"
@@ -197,19 +217,19 @@ if command -v curl >/dev/null 2>&1; then
   curl -fsS "http://127.0.0.1:${VPN_PORT}/api/health" && echo
 fi
 
-echo "Install complete."
-echo "  Panel port: ${VPN_PORT} (bound to 127.0.0.1 only)"
-echo "  Open a tunnel from your computer:"
-echo "    ssh -N -L ${VPN_PORT}:127.0.0.1:${VPN_PORT} YOUR_USER@YOUR_SERVER"
-echo "  Then visit: http://127.0.0.1:${VPN_PORT}/admin"
+step "Install complete"
+ok "Panel port: ${VPN_PORT} (bound to 127.0.0.1 only)"
+info "Open a tunnel from your computer:"
+printf '    %s\n' "${C_VIOLET}ssh -N -L ${VPN_PORT}:127.0.0.1:${VPN_PORT} YOUR_USER@YOUR_SERVER${C_RESET}"
+info "Then visit: http://127.0.0.1:${VPN_PORT}/admin"
 if [ "$GENERATED_PASSWORD" -eq 1 ]; then
-  echo "  Generated web password: $ADMIN_WEB_PASSWORD"
-  echo "  Save it now; it is stored only in secrets.env."
+  ok "Generated web password: $ADMIN_WEB_PASSWORD"
+  info "Save it now; it is stored only in secrets.env."
 else
-  echo "  Password: stored in secrets.env (use the one you entered)."
+  info "Password: stored in secrets.env (use the one you entered)."
 fi
-echo "  x-ui token, bot token, admin ID and SOCKS5 are set later in:"
-echo "    coo-monster"
-echo "  or in the web panel (Servers / Settings)."
-echo "  Terminal panel: coo-monster (works from any directory)"
-echo "  Alternative:    sudo bash $APP_DIR/deploy/panel.sh"
+info "x-ui token, bot token, admin ID and SOCKS5 are set later in:"
+printf '    %s\n' "${C_CYAN}coo-monster${C_RESET}"
+info "or in the web panel (Servers / Settings)."
+info "Terminal panel: coo-monster (works from any directory)"
+info "Alternative:    sudo bash $APP_DIR/deploy/panel.sh"

@@ -472,3 +472,115 @@ body.modal-open { overflow: hidden; }
   .nav { white-space: nowrap; }
   .login-overlay { margin: 0 auto; background: rgba(5,7,15,.82); }
 }
+
+/* ---------- designer polish ---------- */
+:root {
+  --bg: #070a14;
+  --panel: rgba(16, 23, 43, .76);
+  --line: rgba(148, 163, 184, .14);
+  --text: #f2f7ff;
+  --muted: #93a4bf;
+  --cyan: #5eead4;
+  --pink: #fb7185;
+  --violet: #a78bfa;
+  --green: #86efac;
+  --amber: #fcd34d;
+  --shadow: 0 24px 70px rgba(0, 0, 0, .45);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: -35%;
+  z-index: 0;
+  pointer-events: none;
+  background: conic-gradient(from 210deg, transparent, rgba(94,234,212,.18), transparent 28%,
+    rgba(167,139,250,.20), transparent 56%, rgba(251,113,133,.14), transparent 82%);
+  filter: blur(110px);
+  opacity: .5;
+  animation: aurora 28s linear infinite;
+  will-change: transform;
+}
+@keyframes aurora { to { transform: rotate(360deg) translate3d(2%, -2%, 0); } }
+
+.btn { position: relative; overflow: hidden; }
+.btn::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.16) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .55s ease;
+}
+.btn:hover::after { transform: translateX(120%); }
+.btn:active { transform: translateY(0) scale(.985); }
+.btn:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible,
+.nav:focus-visible, .server-option:focus-visible {
+  outline: 2px solid var(--cyan); outline-offset: 2px;
+}
+
+.input, input, textarea, select { transition: border-color .18s ease, box-shadow .18s ease, background .18s ease; }
+input:hover, textarea:hover, select:hover { background: rgba(255,255,255,.055); }
+
+.panel, .stat, .hero-panel, .login-card, .command-item {
+  transition: transform .28s cubic-bezier(.2,.8,.2,1), border-color .28s ease, box-shadow .28s ease;
+}
+.panel:hover, .command-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(94,234,212,.24);
+  box-shadow: var(--shadow);
+}
+
+.stat { position: relative; overflow: hidden; }
+.stat::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.09) 50%, transparent 65%);
+  transform: translateX(-130%); transition: transform .7s ease;
+}
+.stat:hover { transform: translateY(-4px); border-color: rgba(94,234,212,.3); }
+.stat:hover::after { transform: translateX(130%); }
+.stat b { letter-spacing: -.02em; text-shadow: 0 0 22px rgba(94,234,212,.22); }
+
+.nav { position: relative; overflow: hidden; }
+.nav.active::before {
+  content: ''; position: absolute; right: 0; top: 22%; bottom: 22%; width: 3px;
+  border-radius: 4px; background: var(--cyan); box-shadow: 0 0 14px var(--cyan);
+  animation: navIn .25s ease;
+}
+@keyframes navIn { from { opacity: 0; transform: scaleY(.2); } }
+
+.tab.active > * { animation: rise .42s cubic-bezier(.2,.8,.2,1) both; }
+.tab.active > *:nth-child(2) { animation-delay: .04s; }
+.tab.active > *:nth-child(3) { animation-delay: .08s; }
+.tab.active > *:nth-child(4) { animation-delay: .12s; }
+.tab.active > *:nth-child(5) { animation-delay: .16s; }
+.tab.active > *:nth-child(6) { animation-delay: .2s; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+
+.pill { background: rgba(255,255,255,.03); }
+.pill.ok { background: rgba(94,234,212,.08); box-shadow: inset 0 0 12px rgba(94,234,212,.08); }
+.pill.warn { background: rgba(252,211,77,.08); }
+.pill.bad { background: rgba(251,113,133,.08); }
+
+.empty {
+  border: 1px dashed rgba(148,163,184,.22);
+  border-radius: 14px;
+  background: rgba(255,255,255,.015);
+}
+
+.toast.success { border-color: rgba(134,239,172,.4); color: var(--green); }
+.toast.error { border-color: rgba(251,113,133,.4); color: var(--pink); }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,.02); }
+::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,.22); border-radius: 999px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(94,234,212,.35); background-clip: padding-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

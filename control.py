@@ -35,6 +35,41 @@ SECRETS_FILE = ROOT / "secrets.env"
 UNIT_FILE = Path("/etc/systemd/system/vpn-bot.service")
 SERVICE = os.environ.get("VPN_SERVICE", "vpn-bot")
 
+USE_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+RESET = "\033[0m" if USE_COLOR else ""
+PALETTE = {
+    "cyan": "\033[36m",
+    "green": "\033[32m",
+    "violet": "\033[95m",
+    "amber": "\033[33m",
+    "rose": "\033[91m",
+    "dim": "\033[2m",
+    "bold": "\033[1m",
+}
+
+
+def paint(text, tone=None):
+    if not USE_COLOR or not tone:
+        return str(text)
+    return "{}{}{}".format(PALETTE.get(tone, ""), text, RESET)
+
+
+def head(title, subtitle=""):
+    line = "─" * 54
+    print("\n" + paint(line, "dim"))
+    print(paint("  ◈  ", "cyan") + paint(title, "bold"))
+    if subtitle:
+        print(paint("     " + subtitle, "dim"))
+    print(paint(line, "dim"))
+
+
+def kv(label, value, tone=None):
+    print("  {:<16}{}".format(label + ":", paint(value, tone) if tone else value))
+
+
+def chip(text, tone="cyan"):
+    return "[ {} ]".format(paint(text, tone))
+
 
 def load_env(path):
     data = {}
@@ -225,9 +260,13 @@ def pause():
 
 def restart_if_asked():
     if ask_yes_no("Restart the service now?", True):
-        print("Restarting service...")
+        print(paint("Restarting service", "violet") + " ", end="", flush=True)
+        for _ in range(6):
+            time.sleep(0.25)
+            print(paint(".", "dim"), end="", flush=True)
+        print()
         run_command(["systemctl", "restart", SERVICE])
-        time.sleep(2)
+        time.sleep(1)
         active, _ = service_state()
         result = health()
         print("Service: {} | health: {}".format(active, "OK" if result.get("ok") else "ERROR"))
@@ -241,28 +280,28 @@ def show_status():
     active, enabled = service_state()
     result = health()
     port = panel_port()
-    print("\n=== Service status ===")
-    print("Service:       {} / {}".format(active, enabled))
-    print("Web panel:    http://127.0.0.1:{}/admin".format(port))
-    print("SSH tunnel:   ssh -N -L {0}:127.0.0.1:{0} user@your-server".format(port))
-    print("Shortcut:     coo-monster")
-    print("Telegram bot:  {}".format("active" if result.get("bot") else "not set"))
-    print("Bot token:    {}".format(mask(secrets.get("BOT_TOKEN", ""), 6)))
-    print("Admin ID:     {}".format(secrets.get("ADMIN_ID") or "not set"))
-    print("Telegram proxy: {}".format(socks5.mask_proxy(secrets.get("TELEGRAM_SOCKS5", ""))))
+    head("Service status", "live health and access")
+    kv("Service", "{} / {}".format(active, enabled), "green" if active == "active" else "rose")
+    kv("Web panel", "http://127.0.0.1:{}/admin".format(port), "cyan")
+    kv("SSH tunnel", "ssh -N -L {0}:127.0.0.1:{0} user@your-server".format(port), "violet")
+    kv("Shortcut", "coo-monster", "dim")
+    kv("Telegram bot", "active" if result.get("bot") else "not set", "green" if result.get("bot") else "dim")
+    kv("Bot token", mask(secrets.get("BOT_TOKEN", ""), 6), "dim")
+    kv("Admin ID", secrets.get("ADMIN_ID") or "not set", "dim")
+    kv("Telegram proxy", socks5.mask_proxy(secrets.get("TELEGRAM_SOCKS5", "")), "dim")
     xui = result.get("xui") or {}
     if isinstance(xui, dict):
-        print("x-ui:         {}".format(
-            "OK ({} inbound)".format(xui.get("inbounds")) if xui.get("ok") else (xui.get("error") or "ERROR")
-        ))
-    print("Overall health: {}".format("OK" if result.get("ok") else (result.get("error") or "ERROR")))
+        xui_msg = "OK ({} inbound)".format(xui.get("inbounds")) if xui.get("ok") else (xui.get("error") or "ERROR")
+        kv("x-ui", xui_msg, "green" if xui.get("ok") else "rose")
+    overall = "OK" if result.get("ok") else (result.get("error") or "ERROR")
+    kv("Overall health", overall, "green" if result.get("ok") else "rose")
     pause()
 
 
 def service_menu():
     while True:
         active, enabled = service_state()
-        print("\n=== Service control ({}) ===".format(active))
+        head("Service control", "state: {}".format(active))
         print("1) Start")
         print("2) Stop")
         print("3) Restart")
@@ -291,7 +330,7 @@ def service_menu():
 
 def logs_menu():
     while True:
-        print("\n=== Logs ===")
+        head("Logs", "journalctl")
         print("1) Last 50 lines")
         print("2) Last 200 lines")
         print("3) Live follow (Ctrl+C to stop)")
@@ -315,7 +354,7 @@ def logs_menu():
 def bot_menu():
     while True:
         secrets = load_env(SECRETS_FILE)
-        print("\n=== Bot settings ===")
+        head("Bot settings", "Telegram credentials")
         print("Token:       {}".format(mask(secrets.get("BOT_TOKEN", ""), 6)))
         print("Admin ID:    {}".format(secrets.get("ADMIN_ID") or "not set"))
         print("1) Set bot token and admin ID (recommended)")
@@ -373,7 +412,7 @@ def proxy_menu():
     while True:
         secrets = load_env(SECRETS_FILE)
         current = secrets.get("TELEGRAM_SOCKS5", "")
-        print("\n=== SOCKS5 for Telegram ===")
+        head("SOCKS5 for Telegram", "used only for Telegram API calls")
         print("Current:     {}".format(socks5.mask_proxy(current)))
         print("This proxy is used only for Telegram API calls from the bot.")
         print("1) Set / change SOCKS5")
@@ -419,7 +458,7 @@ def proxy_menu():
 
 
 def password_menu():
-    print("\n=== Web panel password ===")
+    head("Web panel password")
     value = getpass.getpass("New web panel password: ").strip()
     if len(value) < 8:
         print("Password must be at least 8 characters.")
@@ -431,7 +470,7 @@ def password_menu():
 
 
 def servers_menu():
-    print("\n=== x-ui servers ===")
+    head("x-ui servers", "tokens are masked")
     try:
         import servers
         items = servers.list_servers()
@@ -451,7 +490,7 @@ def servers_menu():
 
 
 def remove_installation_menu():
-    print("\n=== Remove installation ===")
+    head("Remove installation", "choose what to clean")
     print("1) Remove service and shortcut only (keep config and database)")
     print("2) Remove everything (service, shortcut, config, secrets, database)")
     print("0) Back")
@@ -500,9 +539,7 @@ def main():
         "8": remove_installation_menu,
     }
     while True:
-        print("\n" + "=" * 54)
-        print(" Coo Monster Panel - Terminal ".center(50))
-        print("=" * 54)
+        head("Coo Monster Panel - Terminal", "control • secrets stay masked")
         print("1) Service status and health")
         print("2) Service control (start / stop / restart)")
         print("3) View logs")

@@ -32,9 +32,12 @@ cd coo-monster-panel
 sudo bash deploy/install.sh
 ```
 
-The installer asks for **only one thing**: the web panel password. Type your own, or leave it empty to generate a strong one. It never asks for x-ui details, bot token, admin ID, SOCKS5 or the port.
+The installer asks for exactly two things, in order:
 
-After install it prints the local port and the exact SSH tunnel command to reach the panel.
+1. **Web panel password** — type your own, or leave it empty to generate a strong one.
+2. **Local panel port** — default `3001`, bound to `127.0.0.1` only.
+
+It never asks for x-ui details, bot token, admin ID or SOCKS5. After install it prints the chosen port and the exact SSH tunnel command to reach the panel.
 
 x-ui host/path/token, public host, bot token, admin ID and SOCKS5 are configured later in:
 
@@ -46,10 +49,10 @@ It writes `config.env`, `secrets.env` and `xui.env` (all mode `600`), installs `
 Validate first without changing anything:
 
 ```bash
-ADMIN_WEB_PASSWORD=dummy bash deploy/install.sh --dry-run
+ADMIN_WEB_PASSWORD=dummy VPN_PORT=3001 bash deploy/install.sh --dry-run
 ```
 
-`--reconfigure` only asks for a new web panel password; it keeps existing x-ui, bot and proxy settings:
+`--reconfigure` asks for a new web panel password and port; it keeps existing x-ui, bot and proxy settings:
 
 ```bash
 sudo bash deploy/install.sh --reconfigure
