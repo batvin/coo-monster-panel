@@ -90,12 +90,13 @@ Menu:
 1. Service status and health (bot configured, proxy state, x-ui state)
 2. Start / stop / restart the service
 3. View logs (`journalctl`; includes a live-follow option)
-4. Telegram bot settings — set the **bot token** and **admin ID**, or test the connection
-5. SOCKS5 settings
+4. Telegram bot settings — set or **clear** the **bot token** and **admin ID**, or test the connection
+5. SOCKS5 settings — set, **remove proxy**, or test through it
 6. Change the web panel password
 7. List configured x-ui servers (tokens are masked)
+8. **Remove installation** — remove only the service/shortcut, or purge everything with `DELETE` confirmation
 
-If you skipped the bot token and admin ID during installation, choose **4** after installation, enter both values, and accept the restart prompt. The bot becomes active right away. Secrets are hidden while typing, masked on screen, and written to `secrets.env` with mode `600`.
+If you skipped the bot token and admin ID during installation, choose **4** after installation, enter both values, and accept the restart prompt. The bot becomes active right away. Use **4 → 5/6** to clear the token or admin ID, and **8 → 2** to fully clean the installation before reinstalling. Secrets are hidden while typing, masked on screen, and written to `secrets.env` with mode `600`.
 
 ## SOCKS5 for Telegram
 
@@ -143,7 +144,7 @@ control.py          Terminal control panel
 static/             Admin UI (Three.js bundled in static/vendor)
 deploy/install.sh   Interactive installer
 deploy/panel.sh     Launcher for the terminal panel
-deploy/uninstall.sh Service removal
+deploy/uninstall.sh Service removal (--purge also deletes all files)
 ```
 
 Runtime files created on the server (`config.env`, `secrets.env`, `xui.env`, `servers.json`, `vpn.db`) are git-ignored. Never commit them.
@@ -152,7 +153,8 @@ Runtime files created on the server (`config.env`, `secrets.env`, `xui.env`, `se
 
 - Download JSON backup from the **پشتیبان** section of the panel.
 - To update: `git pull`, then `sudo systemctl restart vpn-bot`, or use menu **2 → Restart** in the terminal panel.
-- To remove the service: `sudo bash deploy/uninstall.sh`.
+- To remove the service only: `sudo bash deploy/uninstall.sh`.
+- To remove everything including secrets and database: `sudo bash deploy/uninstall.sh --purge`, or use terminal menu **8 → 2**.
 
 ## Security notes
 

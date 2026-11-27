@@ -5,9 +5,9 @@ Run after installation with::
 
     sudo bash deploy/panel.sh
 
-The panel can start/stop/restart the service, read health and logs, and set the
-Telegram bot token, admin ID, web password and an optional SOCKS5 proxy for
-Telegram. Secrets are hidden on screen and stored with mode 600.
+The panel can start/stop/restart the service, read health and logs, set or clear
+the Telegram bot token, admin ID, web password and SOCKS5 proxy, and remove the
+installation. Secrets are hidden on screen and stored with mode 600.
 """
 
 import getpass
@@ -322,6 +322,8 @@ def bot_menu():
         print("2) Change bot token")
         print("3) Change admin ID")
         print("4) Test Telegram connection")
+        print("5) Clear bot token")
+        print("6) Clear admin ID")
         print("0) Back")
         choice = input("Choice: ").strip()
 
@@ -341,6 +343,16 @@ def bot_menu():
                 updates["ADMIN_ID"] = value
             save_env(SECRETS_FILE, updates)
             print("Bot settings saved.")
+            restart_if_asked()
+        elif choice in ("5", "6"):
+            key = "BOT_TOKEN" if choice == "5" else "ADMIN_ID"
+            label = "Bot token" if choice == "5" else "Admin ID"
+            save_env(SECRETS_FILE, {key: ""})
+            remaining = load_env(SECRETS_FILE).get(key, "")
+            if remaining:
+                print("ERROR: {} was not cleared.".format(label))
+            else:
+                print("{} cleared.".format(label))
             restart_if_asked()
         elif choice == "4":
             secrets = load_env(SECRETS_FILE)
@@ -383,7 +395,11 @@ def proxy_menu():
             restart_if_asked()
         elif choice == "2":
             save_env(SECRETS_FILE, {"TELEGRAM_SOCKS5": ""})
-            print("Proxy removed.")
+            remaining = load_env(SECRETS_FILE).get("TELEGRAM_SOCKS5", "")
+            if remaining:
+                print("ERROR: proxy was not removed.")
+            else:
+                print("Proxy removed. Telegram will connect directly.")
             restart_if_asked()
         elif choice == "3":
             secrets = load_env(SECRETS_FILE)
@@ -434,6 +450,44 @@ def servers_menu():
     pause()
 
 
+def remove_installation_menu():
+    print("\n=== Remove installation ===")
+    print("1) Remove service and shortcut only (keep config and database)")
+    print("2) Remove everything (service, shortcut, config, secrets, database)")
+    print("0) Back")
+    choice = input("Choice: ").strip()
+
+    if choice == "1":
+        script = ROOT / "deploy" / "uninstall.sh"
+        if not script.exists():
+            print("ERROR: uninstall script not found: {}".format(script))
+        else:
+            run_command(["bash", str(script)])
+            print("Service removed. Files kept at: {}".format(ROOT))
+        pause()
+        return
+
+    if choice == "2":
+        print("WARNING: this deletes all secrets, x-ui settings and customer data.")
+        answer = input("Type DELETE to continue: ").strip()
+        if answer != "DELETE":
+            print("Cancelled.")
+            pause()
+            return
+        script = ROOT / "deploy" / "uninstall.sh"
+        if not script.exists():
+            print("ERROR: uninstall script not found: {}".format(script))
+        else:
+            run_command(["bash", str(script), "--purge"])
+            print("Done. Run 'cd ~' in your shell.")
+        pause()
+        return
+
+    if choice == "0":
+        return
+    print("Invalid choice.")
+
+
 def main():
     actions = {
         "1": show_status,
@@ -443,6 +497,7 @@ def main():
         "5": proxy_menu,
         "6": password_menu,
         "7": servers_menu,
+        "8": remove_installation_menu,
     }
     while True:
         print("\n" + "=" * 54)
@@ -455,6 +510,7 @@ def main():
         print("5) SOCKS5 settings for Telegram")
         print("6) Change web panel password")
         print("7) List servers")
+        print("8) Remove installation")
         print("0) Exit")
         try:
             choice = input("Choice: ").strip()
